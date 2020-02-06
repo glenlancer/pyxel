@@ -21,29 +21,31 @@ def print_help():
     print('--output=f\t\t-o f\tSpecify local output file')
     print('--search=n\t\t-S n\tSearch for mirrors and download from n servers')
     print('--ipv4\t\t\t-4\tUse the IPv4 protocol')
+    print('--ipv6\t\t\t-6\tUse the IPv6 protocol')
+    print('--header=x\t\t\t-H x\tAdd HTTP header string')
+    print('--user-agent=x\t\t-U x\tSet user agent')
+    print('--no-proxy\t\t-N\tJust don\'t use any proxy server')
+    print('--insecure\t\t-k\tDon\'t verify the SSL certificate')
+    print('--no-clobber\t\t-c\tSkip download if file already exists')
+    print('--quiet\t\t\t-q\tLeave stdout alone')
+    print('--verbose\t\t-v\tMore status information')
+    print('--alternate\t\t-a\tAlternate progress indicator')
+    print('--timeout=x\t\t-T x\tSet I/O and connection timeout')
     print('--help\t\t\t-h\tShow this information')
     print('--version\t\t-v\tVerson information')
 
-""
-		 "--ipv6\t\t\t-6\tUse the IPv6 protocol\n"
-		 "--header=x\t\t-H x\tAdd HTTP header string\n"
-		 "--user-agent=x\t\t-U x\tSet user agent\n"
-		 "--no-proxy\t\t-N\tJust don't use any proxy server\n"
-		 "--insecure\t\t-k\tDon't verify the SSL certificate\n"
-		 "--no-clobber\t\t-c\tSkip download if file already exists\n"
-		 "--quiet\t\t\t-q\tLeave stdout alone\n"
-		 "--verbose\t\t-v\tMore status information\n"
-		 "--alternate\t\t-a\tAlternate progress indicator\n"
-		 "--help\t\t\t-h\tThis information\n"
-		 "--timeout=x\t\t-T x\tSet I/O and connection timeout\n"
-
-def initializing_task(config):
+def initializing_tasks(config):
+    for url in config.urls:
+        print(f'Initializing download: {url}')
+        # Handle do_search here?
+        
+    print()
     pass
 
 def command_process(argv, config):
     try:
-        opts, _ = getopt.getopt(
-            argv, 'hvs:n:o:S:46H:N',
+        opts, args = getopt.getopt(
+            argv, 'hVs:n:o:S:46H:Nv',
             [
                 'help',
                 'version',
@@ -56,14 +58,14 @@ def command_process(argv, config):
                 'ipv6',
                 'header=',
                 'no-proxy',
-
+                'verbose',
             ])
     except getopt.GetoptError:
-        show_help()
-        return False
+        print_help()
+        return []
     if not opts:
         print_help()
-        return False
+        return []
     for opt, arg in opts:
         if opt in ('-s', '--max-speed'):
             config.max_speed = int(arg)
@@ -90,18 +92,29 @@ def command_process(argv, config):
             )
         elif opt in ('-N', '--no-proxy'):
             config.http_proxy = ''
+        elif opt in ('-v', '--verbose'):
+            if arg.lower() == 'true':
+                config.verbose = True
+            else:
+                config.verbose = False
+                config.alternate_output = False
         elif opt in ('-h', '--help'):
             print_help()
-            return False
-        elif opt in ('-v', '--version'):
+            return []
+        elif opt in ('-V', '--version'):
             print_version()
-            return False
-    return True
+            return []
+    return args
 
 def main(argv):
     config = Config()
-    if command_process(argv, config):
-        initializing_task(config)
+    urls = command_process(argv, config):
+    if urls:
+        config.urls = urls
+        initializing_tasks(config)
+    else:
+        print('There is no url provided.')
+        print_help()
 
 if __name__ == '__main__':
     main(sys.argv[1:])

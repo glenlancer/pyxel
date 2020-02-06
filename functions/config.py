@@ -9,6 +9,7 @@ class Config(object):
     #AF_INET_6 = socket.AF_INET6
 
     def __init__(self):
+        self.urls = []
         self.default_filename = 'default'
         self.output = ''
         self.http_proxy = ''
@@ -22,7 +23,8 @@ class Config(object):
         self.io_timeout = Config.__DEFAULT_IO_TIMEOUT
         self.buffer_size = 5120
         self.max_speed = 0
-        self.verbose = 1
+        self.verbose = False
+        self.alternate_output = False
         self.insecure = 0
         self.no_clobber = 0
         self.do_search = False

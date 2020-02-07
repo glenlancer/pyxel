@@ -37,10 +37,7 @@ def print_help():
 def initializing_tasks(config):
     for url in config.urls:
         print(f'Initializing download: {url}')
-        # Handle do_search here?
-        
-    print()
-    pass
+        initializeing_download_for_a_url(url, config)
 
 def command_process(argv, config):
     try:

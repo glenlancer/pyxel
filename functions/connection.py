@@ -32,19 +32,42 @@ class Connection(object):
         if http_proxy == '':
             proxy = ''
         elif host != '':
-
+# http://www.example.com:80/path/to/myfile.html?key1=value1&key2=value2#SomewhereInTheDocument
+# ftp://用户名：密码@站点地址 例如：ftp://test:test@192.168.0.1:21/profile
+# http://[FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80/index.html
     def get_info(self):
         pass
 
     def parse_url(self):
         rest_of_url = self.set_protocol_and_port()
-        slash_index = rest_of_url.find('/')
-        if slash_index == -1:
-            self.dir = '/'
+        self.parse_dir_and_filename(rest_of_url)
+
+    @staticmethod
+    def remove_url_after(rest_of_url, split_str):
+        url_results = rest_of_url.split(split_str)
+        if len(url_results) > 1:
+            return url_results[0]
+        return rest_of_url
+
+    def parse_user_and_password(self, rest_of_url):
+        if self.protocol not in (self.FTP, self.FTPS):
+            self.user = ''
+            self.password = ''
         else:
-            self.dir = rest_of_url[slash_index:]
-            if self.protocol == Connection.HTTP or self.protocol == Connection.HTTPS:
-                self.dir = quote(self.dir)
+            url_results = rest_of_url.split('@')
+
+
+    def parse_dir_and_filename(self, rest_of_url):
+        rest_of_url = Connection.remove_url_after(rest_of_url, '#')
+        rest_of_url = Connection.remove_url_after(rest_of_url, '?')
+        first_slash_index = rest_of_url.find('/')
+        last_slash_index = rest_of_url.rfind('/')
+        if first_slash_index != last_slash_index:
+            self.dir = rest_of_url[first_slash_index:last_slash_index]
+            self.file = rest_of_url[last_slash_index + 1:]
+        else:
+            self.dir = '/'
+            self.file = ''
 
     def set_protocol_and_port(self):
         if '://' not in self.url:

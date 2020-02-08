@@ -6,13 +6,14 @@ class Tcp(object):
         self.socket_ref = None
         self.ai_family = socket.AF_UNSPEC
         pass
-    
+
     def connect(self, hostname, port, is_secure, local_if, io_timeout) {
-        if local_if:
-            if self.ai_family != socket.AF_INET:
-                local_if = None
-            else:
-                
+        local_addr = {
+            'sin_family': socket.AF_INET,
+            'sin_port': 0,
+            'sin_addr': local_if,
+        }
+        addr_info = socket.getaddrinfo(hostname, port, )
     }
 
     @staticmethod

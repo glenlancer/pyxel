@@ -35,7 +35,7 @@ class Config(object):
         self.search_top = 3
         self.ai_family = Config.AF_UNSPEC
         self.__headers = {}
-        self.add_header('User-Agent', self.__DEFAULT_USER_AGENT)
+        self.set_header('User-Agent', self.__DEFAULT_USER_AGENT)
         self.interfaces = []
         self.standard_output = None
 

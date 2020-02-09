@@ -1,8 +1,10 @@
 #!/usr/bin/python3
+# -*- coding: utf-8 -*-
 import sys, os
 import getopt
 import re
 from functions.config import Config
+from functions.tasker import Tasker
 
 def is_filename_valid(file_name):
     ''' check if given filename is valid '''
@@ -15,13 +17,13 @@ def print_version():
 def print_help():
     print('Usage: pyxel [options] url1 [url2] [url...]')
     print()
-    print('--max-speed=x\t\t-s x\tSpecifiy maximum speed (bytes per second)') ok
-    print('--num-connections=x\t-n x\tSpecify maximum number of connections') ok
-    print('--max-redirect=x\t\tSpecify maximum number of redirections') ok
-    print('--output=f\t\t-o f\tSpecify local output file') ok
-    print('--search=n\t\t-S n\tSearch for mirrors and download from n servers') ok
-    print('--ipv4\t\t\t-4\tUse the IPv4 protocol') ok
-    print('--ipv6\t\t\t-6\tUse the IPv6 protocol') ok
+    print('--max-speed=x\t\t-s x\tSpecifiy maximum speed (bytes per second)')
+    print('--num-connections=x\t-n x\tSpecify maximum number of connections')
+    print('--max-redirect=x\t\tSpecify maximum number of redirections')
+    print('--output=f\t\t-o f\tSpecify local output file')
+    print('--search=n\t\t-S n\tSearch for mirrors and download from n servers')
+    print('--ipv4\t\t\t-4\tUse the IPv4 protocol')
+    print('--ipv6\t\t\t-6\tUse the IPv6 protocol')
     print('--header=x\t\t\t-H x\tAdd HTTP header string')
     print('--user-agent=x\t\t-U x\tSet user agent')
     print('--no-proxy\t\t-N\tJust don\'t use any proxy server')
@@ -33,11 +35,6 @@ def print_help():
     print('--timeout=x\t\t-T x\tSet I/O and connection timeout')
     print('--help\t\t\t-h\tShow this information')
     print('--version\t\t-v\tVerson information')
-
-def initializing_tasks(config):
-    for url in config.urls:
-        print(f'Initializing download: {url}')
-        initializeing_download_for_a_url(url, config)
 
 def command_process(argv, config):
     try:
@@ -64,9 +61,6 @@ def command_process(argv, config):
                 'timeout='
             ])
     except getopt.GetoptError:
-        print_help()
-        return []
-    if not opts:
         print_help()
         return []
     for opt, arg in opts:
@@ -106,7 +100,7 @@ def command_process(argv, config):
         elif opt in ('-q', '--quiet'):
             config.standard_output = sys.stdout
             sys.stdout = open(os.devnull, 'w')
-            config.verbose = None
+            config.verbose = False
         elif opt in ('-V', '--verbose'):
             if arg.lower() == 'true':
                 config.verbose = True
@@ -123,17 +117,21 @@ def command_process(argv, config):
         elif opt in ('-v', '--version'):
             print_version()
             return []
-    return args
+    if len(args) != 1:
+        print_help()
+        return []
+    else:
+        return args[0]
 
 def main(argv):
     config = Config()
-    urls = command_process(argv, config):
-    if urls:
-        config.urls = urls
-        initializing_tasks(config)
+    url = command_process(argv, config)
+    if url:
+        config.command_url = url
+        tasker = Tasker(config)
+        tasker.start_task()
     else:
         print('There is no url provided.')
-        print_help()
 
 if __name__ == '__main__':
     main(sys.argv[1:])

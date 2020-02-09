@@ -1,5 +1,7 @@
 #!/usr/bin/python3
+import re
 from urllib.parse import quote
+from urllib.parse import urlparse
 from tcp import Tcp
 
 class Connection(object):
@@ -32,70 +34,72 @@ class Connection(object):
         if http_proxy == '':
             proxy = ''
         elif host != '':
-# http://www.example.com:80/path/to/myfile.html?key1=value1&key2=value2#SomewhereInTheDocument
-# ftp://用户名：密码@站点地址 例如：ftp://test:test@192.168.0.1:21/profile
-# http://[FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80/index.html
+
     def get_info(self):
         pass
 
     def parse_url(self):
-        rest_of_url = self.set_protocol_and_port()
-        self.parse_dir_and_filename(rest_of_url)
+        parse_results = urlparse(self.url)
+        self.parse_scheme(parse_results.scheme)
+        self.parse_netloc(parse_results.netloc)
+        self.parse_path(parse_results.path)
 
-    @staticmethod
-    def remove_url_after(rest_of_url, split_str):
-        url_results = rest_of_url.split(split_str)
-        if len(url_results) > 1:
-            return url_results[0]
-        return rest_of_url
+    def parse_path(self, path):
+        self.dir, self.file = re.compile('^(.*/)([^/]*)$').findall(quote(path))
 
-    def parse_user_and_password(self, rest_of_url):
-        if self.protocol not in (self.FTP, self.FTPS):
-            self.user = ''
-            self.password = ''
+    def parse_user_and_password(self, netloc):
+        split_result = netloc.split('@')
+        if len(split_result) < 2:
+            if self.scheme['protocol'] == Connection.PROTOCOL_FTP:
+                self.user = 'anonymous'
+                self.password = 'anonymous'
+            else:
+                self.user = ''
+                self.password = ''
+            return split_result
         else:
-            url_results = rest_of_url.split('@')
+            self.user, self.password = split_result[0].split(':')
+            return split_result[1]
 
-
-    def parse_dir_and_filename(self, rest_of_url):
-        rest_of_url = Connection.remove_url_after(rest_of_url, '#')
-        rest_of_url = Connection.remove_url_after(rest_of_url, '?')
-        first_slash_index = rest_of_url.find('/')
-        last_slash_index = rest_of_url.rfind('/')
-        if first_slash_index != last_slash_index:
-            self.dir = rest_of_url[first_slash_index:last_slash_index]
-            self.file = rest_of_url[last_slash_index + 1:]
+    def parse_domain_and_port(self, rest_of_netloc):
+        if rest_of_netloc.startswith('['):
+            self.domain, port = re.compile('^(\[.+\]):{0,1}([0-9]*)$').findall(rest_of_netloc)[0]
+            if port != '':
+                self.port = int(port)
         else:
-            self.dir = '/'
-            self.file = ''
+            split_result = rest_of_netloc.split(':')
+            if len(split_result) > 1:
+                self.domain = split_result[0]
+                self.port = split_result[1]
+            else:
+                self.domain = split_result
 
-    def set_protocol_and_port(self):
-        if '://' not in self.url:
-            self.protocol = Connection.DEFAULT_PROTOCOL
-            self.port = Connection.DEFAULT_PORT
-            return self.url
-        else:
-            protocol_str, rest_of_url = self.url.split('://')
-            if protocol_str.lower() == 'ftp':
-                self.protocol = Connection.FTP
-                self.port = Connection.FTP_PORT
-            elif protocol_str.lower() == 'ftps':
-                self.protocol = Connection.FTPS
-                self.port = Connection.FTPS_PORT
-            elif protocol_str.lower() == 'http':
-                self.protocol = Connection.HTTP
-                self.port = Connection.HTTP_PORT
-            elif protocol_str.lower() == 'https':
-                self.protocol = Connection.HTTPS
-                self.port = Connection.HTTPS_PORT
-            return rest_of_url
+    def parse_netloc(self, netloc):
+        rest_of_netloc = self.parse_user_and_password(netloc)
+        self.parse_domain_and_port(rest_of_netloc)
+
+    def parse_scheme(self, scheme):
+        if scheme.lower() == 'ftp':
+            self.scheme = Connection.FTP
+            self.port = Connection.FTP_PORT
+        elif scheme.lower() == 'ftps':
+            self.scheme = Connection.FTPS
+            self.port = Connection.FTPS_PORT
+        elif scheme.lower() == 'http':
+            self.scheme = Connection.HTTP
+            self.port = Connection.HTTP_PORT
+        elif scheme.lower() == 'https':
+            self.scheme = Connection.HTTPS
+            self.port = Connection.HTTPS_PORT
 
     def generate_url(self):
-        url_scheme = Connection.get_url_scheme_from_protocol(self.protocol)
-
+        url = Connection.get_scheme(self.scheme)
+        if self.user != '' and self.password != '':
+            url = ''.join([url_scheme, self.user, ':', self.password, '@'])
+        return ''.join([url, self.domain, ':', str(self.port), self.dir, self.file])
 
     @staticmethod
-    def get_url_scheme_from_protocol(protocol):
+    def get_scheme(protocol):
         if protocol == Connection.FTP:
             return 'ftp://'
         elif protocol == Connection.FTPS:

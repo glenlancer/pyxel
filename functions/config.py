@@ -26,8 +26,8 @@ class Config(object):
         self.max_speed = 0
         self.verbose = False
         self.alternate_output = False
-        self.insecure = 0
-        self.no_clobber = 0
+        self.insecure = False
+        self.no_clobber = False
         self.do_search = False
         self.search_timeout = 10
         self.search_threads = 3
@@ -37,8 +37,9 @@ class Config(object):
         self.__headers = {}
         self.add_header('User-Agent', self.__DEFAULT_USER_AGENT)
         self.interfaces = []
+        self.standard_output = None
 
-    def add_header(self, key, value):
+    def set_header(self, key, value):
         self.__headers[key] = value
 
     def set_protocol(self, protocol):

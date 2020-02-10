@@ -14,7 +14,7 @@ class Config(object):
         self.default_filename = 'default'
         self.output = None
         self.http_proxy = None
-        self.no_proxy = []
+        self.no_proxies = []
         self.strip_cgi_parameters = 1
         self.save_state_interval = 10
         self.connection_timeout = 45
@@ -31,6 +31,7 @@ class Config(object):
         self.do_search = False
         self.search_timeout = 10
         self.search_threads = 3
+        # Number of URL's to request from filesearching.com
         self.search_amount = 15
         self.search_top = 3
         self.ai_family = Config.AF_UNSPEC

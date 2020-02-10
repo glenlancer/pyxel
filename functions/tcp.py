@@ -2,19 +2,19 @@
 import socket
 
 class Tcp(object):
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
         self.socket_ref = None
         self.ai_family = socket.AF_UNSPEC
         pass
 
-    def connect(self, hostname, port, is_secure, local_if, io_timeout) {
+    def connect(self, hostname, port, is_secure, local_if, io_timeout):
         local_addr = {
             'sin_family': socket.AF_INET,
             'sin_port': 0,
             'sin_addr': local_if,
         }
-        addr_info = socket.getaddrinfo(hostname, port, )
-    }
+        # addr_info = socket.getaddrinfo(hostname, port, )
 
     @staticmethod
     def print_error(hostname, port, reason):

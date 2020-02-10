@@ -1,6 +1,7 @@
 #!/usr/bin/python3
+# -*- coding: utf-8 -*-
 import time
-from connection import Connection
+from .connection import Connection
 
 class Search(object):
     __MAIN_SEARCH_URL = 'http://www.filesearching.com/cgi-bin/s?'
@@ -11,7 +12,8 @@ class Search(object):
 
     def __init__(self, config):
         self.config = config
-        self.connection = Connection(config, origin_url)
 
-    def makelist(self, search_contexts, orig_url):
+    def makelist(self):
         current_time = time.time()
+        self.connection = Connection(self.config, self.config.command_url)
+

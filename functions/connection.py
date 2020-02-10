@@ -2,50 +2,81 @@
 import re
 from urllib.parse import quote
 from urllib.parse import urlparse
-from tcp import Tcp
+from .tcp import Tcp
+
+class DownloadRecord(object):
+    def __init__(self, url=None):
+        self.url = url
+        self.speed_start_time = 0
+        self.speed = 0
+        self.size = 0
+        self.speed_thread
 
 class Connection(object):
     PROTOCOL_FTP = 0
     PROTOCOL_HTTP = 1
 
-    FTPS = {'is_secure': True, 'protocol': Connection.PROTOCOL_FTP}
-    FTP = {'is_secure': False, 'protocol': Connection.PROTOCOL_FTP}
-    HTTPS = {'is_secure': True, 'protocol': Connection.PROTOCOL_HTTP}
-    HTTP = {'is_secure': False, 'protocol': Connection.PROTOCOL_HTTP}
+    FTPS = {'is_secure': True, 'protocol': PROTOCOL_FTP}
+    FTP = {'is_secure': False, 'protocol': PROTOCOL_FTP}
+    HTTPS = {'is_secure': True, 'protocol': PROTOCOL_HTTP}
+    HTTP = {'is_secure': False, 'protocol': PROTOCOL_HTTP}
 
     FTP_PORT = 21
     FTPS_PORT = 990
     HTTP_PORT = 80
     HTTPS_PORT = 443
 
-    DEFAULT_PROTOCOL = Connection.HTTP
-    DEFAULT_PORT = Connection.HTTP_PORT
+    DEFAULT_PROTOCOL = HTTP
+    DEFAULT_PORT = HTTP_PORT
 
     def __init__(self, config, url):
         self.config = config
-        self.url = url
+        self.connection_url = url
+        self.proxy = None
+        self.local_if = None
+        self.scheme = Connection.DEFAULT_PROTOCOL
+        self.port = Connection.DEFAULT_PORT
         self.parse_url()
+        self.tcp = Tcp(config)
 
     def connection_init(self):
-        http_proxy = self.config.http_proxy
-        hosts = self.config.no_proxy
-        proxy = None
-
-        if http_proxy == '':
-            proxy = ''
-        elif host != '':
+        self.proxy = self.config.http_proxy
+        for no_proxy in self.config.no_proxies:
+            if self.domain == no_proxy:
+                self.proxy = None
+                break
+        if self.proxy is None and self.scheme['protocol'] == Connection.PROTOCOL_FTP:
+            self.tcp.connect()
 
     def get_info(self):
         pass
 
     def parse_url(self):
-        parse_results = urlparse(self.url)
+        parse_results = urlparse(self.connection_url)
         self.parse_scheme(parse_results.scheme)
         self.parse_netloc(parse_results.netloc)
         self.parse_path(parse_results.path)
 
+    def parse_scheme(self, scheme):
+        if scheme.lower() == 'ftp':
+            self.scheme = Connection.FTP
+            self.port = Connection.FTP_PORT
+        elif scheme.lower() == 'ftps':
+            self.scheme = Connection.FTPS
+            self.port = Connection.FTPS_PORT
+        elif scheme.lower() == 'http':
+            self.scheme = Connection.HTTP
+            self.port = Connection.HTTP_PORT
+        elif scheme.lower() == 'https':
+            self.scheme = Connection.HTTPS
+            self.port = Connection.HTTPS_PORT
+
+    def parse_netloc(self, netloc):
+        rest_of_netloc = self.parse_user_and_password(netloc)
+        self.parse_domain_and_port(rest_of_netloc)
+
     def parse_path(self, path):
-        self.dir, self.file = re.compile('^(.*/)([^/]*)$').findall(quote(path))
+        self.dir, self.file = re.compile('^(.*/)([^/]*)$').findall(quote(path))[0]
 
     def parse_user_and_password(self, netloc):
         split_result = netloc.split('@')
@@ -56,7 +87,7 @@ class Connection(object):
             else:
                 self.user = ''
                 self.password = ''
-            return split_result
+            return split_result[0]
         else:
             self.user, self.password = split_result[0].split(':')
             return split_result[1]
@@ -73,24 +104,6 @@ class Connection(object):
                 self.port = split_result[1]
             else:
                 self.domain = split_result
-
-    def parse_netloc(self, netloc):
-        rest_of_netloc = self.parse_user_and_password(netloc)
-        self.parse_domain_and_port(rest_of_netloc)
-
-    def parse_scheme(self, scheme):
-        if scheme.lower() == 'ftp':
-            self.scheme = Connection.FTP
-            self.port = Connection.FTP_PORT
-        elif scheme.lower() == 'ftps':
-            self.scheme = Connection.FTPS
-            self.port = Connection.FTPS_PORT
-        elif scheme.lower() == 'http':
-            self.scheme = Connection.HTTP
-            self.port = Connection.HTTP_PORT
-        elif scheme.lower() == 'https':
-            self.scheme = Connection.HTTPS
-            self.port = Connection.HTTPS_PORT
 
     def generate_url(self):
         url = Connection.get_scheme(self.scheme)

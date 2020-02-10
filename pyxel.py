@@ -58,11 +58,11 @@ def command_process(argv, config):
                 'quiet',
                 'verbose',
                 'alternate',
-                'timeout='
+                'timeout=',
             ])
     except getopt.GetoptError:
         print_help()
-        return []
+        return False, None
     for opt, arg in opts:
         if opt in ('-s', '--max-speed'):
             config.max_speed = int(arg)
@@ -113,25 +113,25 @@ def command_process(argv, config):
             config.io_timeout = int(arg)
         elif opt in ('-h', '--help'):
             print_help()
-            return []
+            return True, None
         elif opt in ('-v', '--version'):
             print_version()
-            return []
-    if len(args) != 1:
+            return True, None
+    if len(args) < 1:
         print_help()
-        return []
+        return False, None
     else:
-        return args[0]
+        return True, args[0]
 
 def main(argv):
     config = Config()
-    url = command_process(argv, config)
-    if url:
+    ok, url = command_process(argv, config)
+    if ok and url is not None:
         config.command_url = url
         tasker = Tasker(config)
         tasker.start_task()
-    else:
-        print('There is no url provided.')
+    elif not ok:
+        print('\nThere is no url provided.')
 
 if __name__ == '__main__':
     main(sys.argv[1:])

@@ -35,7 +35,6 @@ class Http(object):
         ).strip()
 
     def get(self, url):
-        # Test
         self
 
     def add_header(self, new_header):

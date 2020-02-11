@@ -50,5 +50,6 @@ class Config(object):
             self.ai_family == socket.AF_INET6
         else:
             raise Exception(f'Exception in {__name__}: unsupported protocol.')
-    
-    
+
+    def parse_interfaces():
+        pass

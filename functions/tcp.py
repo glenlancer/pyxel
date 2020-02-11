@@ -2,17 +2,15 @@
 import socket
 
 class Tcp(object):
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
         self.socket_ref = None
-        self.ai_family = self.config.ai_family
 
-    def connect(self, hostname, port, is_secure, io_timeout, local_if=None):
+    def connect(self, hostname, port, is_secure, set_ai_family, io_timeout, local_if=None):
         try:
             gai_results = socket.getaddrinfo(
                 host,
                 port,
-                self.ai_family,
+                set_ai_family,
                 socket.SOCK_STREAM,
                 socket.IPPROTO_TCP,
                 socket.AI_PASSIVE

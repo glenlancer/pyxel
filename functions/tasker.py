@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 from .search import Search
+from .connection import DownloadRecord
 
 class Tasker(object):
     def __init__(self, config):
@@ -12,7 +13,8 @@ class Tasker(object):
         if self.config.do_search:
             if self.config.verbose:
                 print('Doing search...')
-            self.search.makelist()
+            download_records = [DownloadRecord] * (self.config.search_amount + 1)
+            self.search.makelist(download_records)
         else:
             pass
             

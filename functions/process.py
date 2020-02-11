@@ -1,11 +1,12 @@
 #!/usr/bin/python3
 
 class Process(object):
-    def __init__(self, config, mirror_count, url):
+    def __init__(self, config):
         self.config = config
-        self.mirror_count = mirror_count
-        self.download_url = url
+        self.url = self.config.command_url
+
+    def new_process(self):
         pass
 
-    def test():
+    def open_process(self):
         pass

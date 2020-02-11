@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
+
 import time
 from .connection import Connection
 
@@ -12,8 +13,15 @@ class Search(object):
 
     def __init__(self, config):
         self.config = config
+        self.url = self.config.command_url
 
-    def makelist(self):
+    def makelist(self, download_records):
         current_time = time.time()
-        self.connection = Connection(self.config, self.config.command_url)
+        self.connection = Connection(self.config, self.url)
+        if not self.connection.setup():
+            return False
+
+if __name__ == '__main__':
+    # Testing
+    pass
 

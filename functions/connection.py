@@ -2,7 +2,8 @@
 import re
 from urllib.parse import quote
 from urllib.parse import urlparse
-from .tcp import Tcp
+from .ftp import Ftp
+from .http import Http
 
 class DownloadRecord(object):
     def __init__(self, url=None):
@@ -10,7 +11,7 @@ class DownloadRecord(object):
         self.speed_start_time = 0
         self.speed = 0
         self.size = 0
-        self.speed_thread
+        self.speed_thread = None
 
 class Connection(object):
     PROTOCOL_FTP = 0
@@ -37,21 +38,46 @@ class Connection(object):
         self.scheme = Connection.DEFAULT_PROTOCOL
         self.port = Connection.DEFAULT_PORT
         self.parse_url()
-        self.tcp = Tcp(config)
+        self.ftp = Ftp(self)
+        self.http = Http(self)
+        self.ai_family = self.config.ai_family
+        self.io_timeout = self.config.io_timeout
+        self.request = None
+
+    def setup(self):
+        pass
 
     def connection_init(self):
         self.proxy = self.config.http_proxy
         for no_proxy in self.config.no_proxies:
-            if self.domain == no_proxy:
+            if self.hostname == no_proxy:
                 self.proxy = None
                 break
-        if self.proxy is None and self.scheme['protocol'] == Connection.PROTOCOL_FTP:
-            self.tcp.connect()
+        if self.scheme['protocol'] == Connection.PROTOCOL_FTP:
+            if not self.ftp.connect():
+                self.message = self.ftp.message
+                self.disconnect()
+                return False
+            else:
+                self.message = self.ftp.message
+                if not self.ftp.cwd(self.dir):
+                    self.disconnect()
+                    return False
+        else:
+            if not self.http.connect():
+                self.message = self.http.headers
+                self.disconnect()
+                return False
+            self.message = self.http.headers
+        return True
+
 
     def get_info(self):
         pass
 
-    def parse_url(self):
+    def parse_url(self, new_url=None):
+        if new_url is not None:
+            self.connection_url = new_url
         parse_results = urlparse(self.connection_url)
         self.parse_scheme(parse_results.scheme)
         self.parse_netloc(parse_results.netloc)
@@ -73,7 +99,7 @@ class Connection(object):
 
     def parse_netloc(self, netloc):
         rest_of_netloc = self.parse_user_and_password(netloc)
-        self.parse_domain_and_port(rest_of_netloc)
+        self.parse_hostname_and_port(rest_of_netloc)
 
     def parse_path(self, path):
         self.dir, self.file = re.compile('^(.*/)([^/]*)$').findall(quote(path))[0]
@@ -92,24 +118,24 @@ class Connection(object):
             self.user, self.password = split_result[0].split(':')
             return split_result[1]
 
-    def parse_domain_and_port(self, rest_of_netloc):
+    def parse_hostname_and_port(self, rest_of_netloc):
         if rest_of_netloc.startswith('['):
-            self.domain, port = re.compile('^(\[.+\]):{0,1}([0-9]*)$').findall(rest_of_netloc)[0]
+            self.hostname, port = re.compile('^(\[.+\]):{0,1}([0-9]*)$').findall(rest_of_netloc)[0]
             if port != '':
                 self.port = int(port)
         else:
             split_result = rest_of_netloc.split(':')
             if len(split_result) > 1:
-                self.domain = split_result[0]
+                self.hostname = split_result[0]
                 self.port = split_result[1]
             else:
-                self.domain = split_result
+                self.hostname = split_result
 
     def generate_url(self):
         url = Connection.get_scheme(self.scheme)
         if self.user != '' and self.password != '':
             url = ''.join([url_scheme, self.user, ':', self.password, '@'])
-        return ''.join([url, self.domain, ':', str(self.port), self.dir, self.file])
+        return ''.join([url, self.hostname, ':', str(self.port), self.dir, self.file])
 
     @staticmethod
     def get_scheme(protocol):

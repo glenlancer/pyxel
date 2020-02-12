@@ -71,7 +71,6 @@ class Connection(object):
             self.message = self.http.headers
         return True
 
-
     def get_info(self):
         pass
 
@@ -131,11 +130,26 @@ class Connection(object):
             else:
                 self.hostname = split_result
 
-    def generate_url(self):
+    def generate_original_url(self):
         url = Connection.get_scheme(self.scheme)
         if self.user != '' and self.password != '':
             url = ''.join([url_scheme, self.user, ':', self.password, '@'])
         return ''.join([url, self.hostname, ':', str(self.port), self.dir, self.file])
+
+    def generate_url_with_port(self):
+        url = Connection.get_scheme(self.scheme)
+        return ''.join([url, self.hostname, ':', str(self.port), self.dir, self.file])
+
+    def generate_url_without_port(self):
+        url = Connection.get_scheme(self.scheme)
+        return ''.join([url, self.hostname, self.dir, self.file])
+
+    def is_http_default_port(self):
+        return (
+            self.scheme == Connection.HTTP and self.port == Connection.HTTP_PORT
+        ) or (
+            self.scheme == Connection.HTTPS and self.port == Connection.HTTPS_PORT
+        )
 
     @staticmethod
     def get_scheme(protocol):

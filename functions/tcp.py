@@ -48,15 +48,15 @@ class Tcp(object):
             self.socket_ref.close()
             self.socket_ref = None
 
-    def read(self, recv_size):
+    def read(self, recv_buffer):
         if self.socket_ref is None:
             raise Exception(f'Exception in {__name__}: socket_ref is None.')
-        return self.socket_ref.recv(recv_size)
+        return self.socket_ref.recv(recv_buffer)
 
-    def write(self, send_size):
+    def write(self, send_buffer):
         if self.socket_ref is None:
             raise Exception(f'Exception in {__name__}: socket_ref is None.')
-        return self.socket_ref.send(send_size)
+        return self.socket_ref.sendall(send_buffer)
 
     def get_interface_ip(self, interface):
         pass

@@ -6,6 +6,7 @@ from urllib.parse import quote
 from urllib.parse import urlparse
 from .ftp import Ftp
 from .http import Http
+from .tcp import Tcp
 
 '''
     Exclude the idea of: Ftp over Http proxy, only implement http over http proxy first.
@@ -30,50 +31,49 @@ class Connection(object):
     FTP = 2
     FTPS = 3
 
-    DEFAULT_PROTOCOL = HTTP
-    DEFAULT_PORT = HTTP_DEFAULT_PORT
+    TARGET_URL = 'target_url'
+    HTTP_PROXY_URL = 'http_proxy_url'
 
-    def __init__(self, ai_family, io_timeout, http_proxy=None, no_proxies=None, local_if=None):
+    def __init__(self, ai_family, io_timeout, local_if=None):
         self.ai_family = ai_family
         self.io_timeout = io_timeout
-        self.http_proxy = http_proxy
-        self.no_proxies = no_proxies
         self.local_if = local_if
         self.request = None
-        self.check_http_proxy()
+        self.tcp = Tcp()
 
-    def check_http_proxy(self):
-        for no_proxy in self.config.no_proxies:
-            if self.hostname == no_proxy:
-                self.http_proxy = None
-                break
-
-    def parse_url(self, new_url):
-        self.url = new_url
-        parse_results = urlparse(self.url)
-        self.parse_scheme(parse_results.scheme)
-        self.parse_netloc(parse_results.netloc)
-        self.parse_path(parse_results.path)
+    def set_url(self, new_url, url_type=Connection.TARGET_URL):
+        parse_results = urlparse(new_url)
+        scheme, port = self.parse_scheme(parse_results.scheme)
+        user, password, hostname, new_port = self.parse_netloc(parse_results.netloc)
+        file_dir, file = self.parse_path(parse_results.path)
+        if new_port is not None:
+            port = new_port
+        self.url_info[url_type] = {
+            'scheme': scheme,
+            'port': port,
+            'user': user,
+            'password': password,
+            'hostname': hostname,
+            'file_dir': file_dir,
+            'file': file,
+        }
 
     def parse_scheme(self, scheme):
         if scheme.lower() == 'ftp':
-            self.scheme = Connection.FTP
-            self.port = Connection.FTP_DEFAULT_PORT
+            return Connection.FTP, Connection.FTP_DEFAULT_PORT
         elif scheme.lower() == 'ftps':
-            self.scheme = Connection.FTPS
-            self.port = Connection.FTPS_DEFAULT_PORT
+            return Connection.FTPS, Connection.FTPS_DEFAULT_PORT
         elif scheme.lower() == 'http':
-            self.scheme = Connection.HTTP
-            self.port = Connection.HTTP_DEFAULT_PORT
+            return Connection.HTTP, Connection.HTTP_DEFAULT_PORT
         elif scheme.lower() == 'https':
-            self.scheme = Connection.HTTPS
-            self.port = Connection.HTTPS_DEFAULT_PORT
+            return Connection.HTTPS, Connection.HTTPS_DEFAULT_PORT
         else:
             raise Exception(f'Exception in {__name__}: unsupported scheme, {scheme}.')
 
     def parse_netloc(self, netloc):
-        rest_of_netloc = self.parse_user_and_password(netloc)
-        self.parse_hostname_and_port(rest_of_netloc)
+        rest_of_netloc, user, password = self.parse_user_and_password(netloc)
+        hostname, port = self.parse_hostname_and_port(rest_of_netloc)
+        return user, password, hostname, port
 
     def parse_user_and_password(self, netloc):
         '''
@@ -82,31 +82,34 @@ class Connection(object):
         split_result = netloc.split('@')
         if len(split_result) < 2:
             if self.scheme['protocol'] == Connection.PROTOCOL_FTP:
-                self.user = 'anonymous'
-                self.password = 'anonymous'
+                user = 'anonymous'
+                password = 'anonymous'
             else:
-                self.user = ''
-                self.password = ''
-            return split_result[0]
+                user = ''
+                password = ''
+            return split_result[0], user, password
         else:
-            self.user, self.password = split_result[0].split(':')
-            return split_result[1]
+            user, password = split_result[0].split(':')
+            return split_result[1], user, password
 
     def parse_hostname_and_port(self, rest_of_netloc):
         if rest_of_netloc.startswith('['):
-            self.hostname, port = re.compile('^(\[.+\]):{0,1}([0-9]*)$').findall(rest_of_netloc)[0]
+            hostname, port = re.compile('^(\[.+\]):{0,1}([0-9]*)$').findall(rest_of_netloc)[0]
             if port != '':
-                self.port = int(port)
+                port = int(port)
         else:
             split_result = rest_of_netloc.split(':')
             if len(split_result) > 1:
-                self.hostname = split_result[0]
-                self.port = split_result[1]
+                hostname = split_result[0]
+                port = split_result[1]
             else:
-                self.hostname = split_result
+                hostname = split_result
+                port = None
+        return hostname, port
 
     def parse_path(self, path):
-        self.dir, self.file = re.compile('^(.*/)([^/]*)$').findall(quote(path))[0]
+        file_dir, file = re.compile('^(.*/)([^/]*)$').findall(quote(path))[0]
+        return file_dir, file
 
     def generate_original_url(self):
         url = Connection.get_scheme(self.scheme)
@@ -116,9 +119,9 @@ class Connection(object):
 
     def is_http_default_port(self):
         return (
-            self.scheme == Connection.HTTP and self.port == Connection.HTTP_PORT
+            self.scheme == Connection.HTTP and self.port == Connection.HTTP_DEFAULT_PORT
         ) or (
-            self.scheme == Connection.HTTPS and self.port == Connection.HTTPS_PORT
+            self.scheme == Connection.HTTPS and self.port == Connection.HTTPS_DEFAULT_PORT
         )
 
     @staticmethod

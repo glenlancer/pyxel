@@ -5,15 +5,27 @@ import base64
 from .connection import Connection
 
 class Http(Connection):
-    def __init__(self, conn):
-        self.conn = conn
-        self.tcp = Tcp()
+    def __init__(self, ai_family, io_timeout, local_if=None, http_proxy, no_proxies):
+        super(Http, self).__init__(ai_family, io_timeout, local_if)
+        self.http_proxy = http_proxy
+        self.no_proxies = no_proxies
         self.http_basic_auth = None
         self.request = None
 
+    def check_http_proxy(self):
+        for no_proxy in self.no_proxies:
+            if self.hostname == no_proxy:
+                self.http_proxy = None
+                break
+
+    def init(self):
+        self.check_http_proxy()
+        if not self.connect():
+            pass
+
     def connect(self):
-        if self.conn.proxy is not None:
-            self.conn.parse_url(self.conn.proxy)
+        if self.http_proxy is not None:
+            self.set_url(self.http_proxy)
         if not self.tcp.connect(
             self.conn.hostname,
             self.conn.port,
@@ -36,9 +48,9 @@ class Http(Connection):
 
     def get(self):
         self.request = None
-        if self.conn.proxy is None:
-            self.add_header(f'GET {self.conn.dir}{self.conn.file} HTTP /1.0')
-            if self.conn.is_http_default_port():
+        if self.http_proxy is None:
+            self.add_header(f'GET {self.dir}{self.file} HTTP /1.0')
+            if self.is_http_default_port():
                 self.add_header(f'Host: {self.conn.host}')
             else:
                 self.add_header(f'Host: {self.conn.host:{self.conn.port}')

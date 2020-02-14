@@ -117,13 +117,6 @@ class Connection(object):
             url = ''.join([url_scheme, self.user, ':', self.password, '@'])
         return ''.join([url, self.hostname, ':', str(self.port), self.dir, self.file])
 
-    def is_http_default_port(self):
-        return (
-            self.scheme == Connection.HTTP and self.port == Connection.HTTP_DEFAULT_PORT
-        ) or (
-            self.scheme == Connection.HTTPS and self.port == Connection.HTTPS_DEFAULT_PORT
-        )
-
     @staticmethod
     def get_scheme(protocol):
         if protocol == Connection.FTP:
@@ -147,3 +140,7 @@ class Connection(object):
             return Connection.FTP
         else:
             raise Exception(f'Exception in {__name__}: unsupported scheme from {url}.')
+
+    @staticmethod
+    def is_secure_scheme(scheme):
+        return (scheme == Connection.HTTPS) or (scheme == Connection.FTPS)

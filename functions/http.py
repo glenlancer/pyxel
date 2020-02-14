@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import base64
+from .connection import Connection
 
-class Http(object):
+class Http(Connection):
     def __init__(self, conn):
         self.conn = conn
         self.tcp = Tcp()

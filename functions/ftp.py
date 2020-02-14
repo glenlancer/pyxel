@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-from .tcp import Tcp
+from .connection import Connection
 
-class Ftp(object):
+class Ftp(Connection):
     FTP_PASSIVE = 1
     FTP_PORT = 2
 
@@ -26,7 +26,6 @@ class Ftp(object):
 
     def wait(self):
         self.message = None
-        
 
     def send_command(self, cmd):
         cmd = ''.join([cmd, '\r\n'])

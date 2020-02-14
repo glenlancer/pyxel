@@ -1,9 +1,15 @@
 #!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
 import re
 from urllib.parse import quote
 from urllib.parse import urlparse
 from .ftp import Ftp
 from .http import Http
+
+'''
+    Exclude the idea of: Ftp over Http proxy, only implement http over http proxy first.
+'''
 
 class DownloadRecord(object):
     def __init__(self, url=None):
@@ -14,70 +20,37 @@ class DownloadRecord(object):
         self.speed_thread = None
 
 class Connection(object):
-    PROTOCOL_FTP = 0
-    PROTOCOL_HTTP = 1
+    FTP_DEFAULT_PORT = 21
+    FTPS_DEFAULT_PORT = 990
+    HTTP_DEFAULT_PORT = 80
+    HTTPS_DEFAULT_PORT = 443
 
-    FTPS = {'is_secure': True, 'protocol': PROTOCOL_FTP}
-    FTP = {'is_secure': False, 'protocol': PROTOCOL_FTP}
-    HTTPS = {'is_secure': True, 'protocol': PROTOCOL_HTTP}
-    HTTP = {'is_secure': False, 'protocol': PROTOCOL_HTTP}
-
-    FTP_PORT = 21
-    FTPS_PORT = 990
-    HTTP_PORT = 80
-    HTTPS_PORT = 443
+    HTTP = 0
+    HTTPS = 1
+    FTP = 2
+    FTPS = 3
 
     DEFAULT_PROTOCOL = HTTP
-    DEFAULT_PORT = HTTP_PORT
+    DEFAULT_PORT = HTTP_DEFAULT_PORT
 
-    def __init__(self, config, url):
-        self.config = config
-        self.connection_url = url
-        self.proxy = None
-        self.local_if = None
-        self.scheme = Connection.DEFAULT_PROTOCOL
-        self.port = Connection.DEFAULT_PORT
-        self.parse_url()
-        self.ftp = Ftp(self)
-        self.http = Http(self)
-        self.ai_family = self.config.ai_family
-        self.io_timeout = self.config.io_timeout
+    def __init__(self, ai_family, io_timeout, http_proxy=None, no_proxies=None, local_if=None):
+        self.ai_family = ai_family
+        self.io_timeout = io_timeout
+        self.http_proxy = http_proxy
+        self.no_proxies = no_proxies
+        self.local_if = local_if
         self.request = None
+        self.check_http_proxy()
 
-    def setup(self):
-        pass
-
-    def connection_init(self):
-        self.proxy = self.config.http_proxy
+    def check_http_proxy(self):
         for no_proxy in self.config.no_proxies:
             if self.hostname == no_proxy:
-                self.proxy = None
+                self.http_proxy = None
                 break
-        if self.scheme['protocol'] == Connection.PROTOCOL_FTP:
-            if not self.ftp.connect():
-                self.message = self.ftp.message
-                self.disconnect()
-                return False
-            else:
-                self.message = self.ftp.message
-                if not self.ftp.cwd(self.dir):
-                    self.disconnect()
-                    return False
-        else:
-            if not self.http.connect():
-                self.message = self.http.headers
-                self.disconnect()
-                return False
-            self.message = self.http.headers
-        return True
 
-    def get_info(self):
-        pass
-
-    def parse_url(self, new_url=None):
-        if new_url is not None:
-            self.connection_url = new_url
-        parse_results = urlparse(self.connection_url)
+    def parse_url(self, new_url):
+        self.url = new_url
+        parse_results = urlparse(self.url)
         self.parse_scheme(parse_results.scheme)
         self.parse_netloc(parse_results.netloc)
         self.parse_path(parse_results.path)
@@ -85,25 +58,27 @@ class Connection(object):
     def parse_scheme(self, scheme):
         if scheme.lower() == 'ftp':
             self.scheme = Connection.FTP
-            self.port = Connection.FTP_PORT
+            self.port = Connection.FTP_DEFAULT_PORT
         elif scheme.lower() == 'ftps':
             self.scheme = Connection.FTPS
-            self.port = Connection.FTPS_PORT
+            self.port = Connection.FTPS_DEFAULT_PORT
         elif scheme.lower() == 'http':
             self.scheme = Connection.HTTP
-            self.port = Connection.HTTP_PORT
+            self.port = Connection.HTTP_DEFAULT_PORT
         elif scheme.lower() == 'https':
             self.scheme = Connection.HTTPS
-            self.port = Connection.HTTPS_PORT
+            self.port = Connection.HTTPS_DEFAULT_PORT
+        else:
+            raise Exception(f'Exception in {__name__}: unsupported scheme, {scheme}.')
 
     def parse_netloc(self, netloc):
         rest_of_netloc = self.parse_user_and_password(netloc)
         self.parse_hostname_and_port(rest_of_netloc)
 
-    def parse_path(self, path):
-        self.dir, self.file = re.compile('^(.*/)([^/]*)$').findall(quote(path))[0]
-
     def parse_user_and_password(self, netloc):
+        '''
+            netloc example: username:password@www.my_site.com:123
+        '''
         split_result = netloc.split('@')
         if len(split_result) < 2:
             if self.scheme['protocol'] == Connection.PROTOCOL_FTP:
@@ -130,19 +105,14 @@ class Connection(object):
             else:
                 self.hostname = split_result
 
+    def parse_path(self, path):
+        self.dir, self.file = re.compile('^(.*/)([^/]*)$').findall(quote(path))[0]
+
     def generate_original_url(self):
         url = Connection.get_scheme(self.scheme)
         if self.user != '' and self.password != '':
             url = ''.join([url_scheme, self.user, ':', self.password, '@'])
         return ''.join([url, self.hostname, ':', str(self.port), self.dir, self.file])
-
-    def generate_url_with_port(self):
-        url = Connection.get_scheme(self.scheme)
-        return ''.join([url, self.hostname, ':', str(self.port), self.dir, self.file])
-
-    def generate_url_without_port(self):
-        url = Connection.get_scheme(self.scheme)
-        return ''.join([url, self.hostname, self.dir, self.file])
 
     def is_http_default_port(self):
         return (
@@ -161,3 +131,16 @@ class Connection(object):
             return 'http://'
         elif protocol == Connection.HTTPS:
             return 'https://'
+
+    @staticmethod
+    def get_scheme_from_url(url):
+        if url.lower().startswith('https://'):
+            return Connection.HTTPS
+        elif url.lower().startswith('http://'):
+            return Connection.HTTP
+        elif url.lower().startswith('ftps://'):
+            return Connection.FTPS
+        elif url.lower().startswith('ftp://'):
+            return Connection.FTP
+        else:
+            raise Exception(f'Exception in {__name__}: unsupported scheme from {url}.')

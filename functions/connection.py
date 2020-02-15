@@ -2,10 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import re
-from urllib.parse import quote
+# from urllib.parse import quote
 from urllib.parse import urlparse
-from .ftp import Ftp
-from .http import Http
 from .tcp import Tcp
 
 '''
@@ -34,22 +32,29 @@ class Connection(object):
     TARGET_URL = 'target_url'
     HTTP_PROXY_URL = 'http_proxy_url'
 
-    def __init__(self, ai_family, io_timeout, local_if=None):
+    def __init__(self, ai_family, io_timeout, local_ifs=None):
         self.ai_family = ai_family
         self.io_timeout = io_timeout
-        self.local_if = local_if
+        self.local_ifs = local_ifs
+        self.output_filename = None
         self.request = None
         self.tcp = Tcp()
+        self.status_code = 0
+        self.target_scheme = None
+        self.url_info = {}
 
-    def set_url(self, new_url, url_type=Connection.TARGET_URL):
+    def is_connected(self):
+        return self.tcp.is_connected()
+
+    def set_url(self, new_url, url_type=TARGET_URL):
         parse_results = urlparse(new_url)
-        scheme, port = self.parse_scheme(parse_results.scheme)
+        self.target_scheme, port = self.parse_scheme(parse_results.scheme)
         user, password, hostname, new_port = self.parse_netloc(parse_results.netloc)
         file_dir, file = self.parse_path(parse_results.path)
         if new_port is not None:
             port = new_port
         self.url_info[url_type] = {
-            'scheme': scheme,
+            'scheme': self.target_scheme,
             'port': port,
             'user': user,
             'password': password,
@@ -81,7 +86,7 @@ class Connection(object):
         '''
         split_result = netloc.split('@')
         if len(split_result) < 2:
-            if self.scheme['protocol'] == Connection.PROTOCOL_FTP:
+            if self.target_scheme == Connection.FTP:
                 user = 'anonymous'
                 password = 'anonymous'
             else:
@@ -103,12 +108,13 @@ class Connection(object):
                 hostname = split_result[0]
                 port = split_result[1]
             else:
-                hostname = split_result
+                hostname = split_result[0]
                 port = None
         return hostname, port
 
     def parse_path(self, path):
-        file_dir, file = re.compile('^(.*/)([^/]*)$').findall(quote(path))[0]
+        #file_dir, file = re.compile('^(.*/)([^/]*)$').findall(quote(path))[0]
+        file_dir, file = re.compile('^(.*/)([^/]*)$').findall(path)[0]
         return file_dir, file
 
     def generate_original_url(self):

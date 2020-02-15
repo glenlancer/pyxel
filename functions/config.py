@@ -1,16 +1,16 @@
 #!/usr/bin/python3
 import socket
 
+PYXEL_DEBUG = True
+
 class Config(object):
     __MAX_REDIRECT = 20
     __DEFAULT_IO_TIMEOUT = 120
     __DEFAULT_USER_AGENT = 'Mozilla/5.0 3578.98 Safari/537.36'
-    #AF_INET = socket.AF_INET
-    #AF_INET_6 = socket.AF_INET6
     AF_UNSPEC = socket.AF_UNSPEC
 
     def __init__(self):
-        self.urls = []
+        self.command_url = None
         self.default_filename = 'default'
         self.output = None
         self.http_proxy = None
@@ -35,13 +35,13 @@ class Config(object):
         self.search_amount = 15
         self.search_top = 3
         self.ai_family = Config.AF_UNSPEC
-        self.__headers = {}
+        self.headers = {}
         self.set_header('User-Agent', self.__DEFAULT_USER_AGENT)
-        self.interfaces = []
+        self.local_ifs = []
         self.standard_output = None
 
     def set_header(self, key, value):
-        self.__headers[key] = value
+        self.headers[key] = value
 
     def set_protocol(self, protocol):
         if protocol.lower() == 'ipv4':

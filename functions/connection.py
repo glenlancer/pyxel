@@ -61,6 +61,7 @@ class Connection(object):
             'hostname': hostname,
             'file_dir': file_dir,
             'file': file,
+            'cgi_params': parse_results.query
         }
 
     def parse_scheme(self, scheme):
@@ -122,6 +123,12 @@ class Connection(object):
         if self.user != '' and self.password != '':
             url = ''.join([url_scheme, self.user, ':', self.password, '@'])
         return ''.join([url, self.hostname, ':', str(self.port), self.dir, self.file])
+
+    def get_url_filename(self):
+        return self.url_info[TARGET_URL]['file']
+
+    def strip_cgi_parameters(self):
+        self.url_info[TARGET_URL]['cgi_params'] = None
 
     @staticmethod
     def get_scheme(protocol):

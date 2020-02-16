@@ -11,7 +11,7 @@ class Config(object):
 
     def __init__(self):
         self.command_url = None
-        self.default_filename = 'default'
+        self.default_filename = 'default_filename'
         self.output = None
         self.http_proxy = None
         self.no_proxies = []

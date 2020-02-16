@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import base64
+import base64, re
 from .connection import Connection
 
 from .config import PYXEL_DEBUG
@@ -11,6 +11,7 @@ class Http(Connection):
     def __init__(self, ai_family, io_timeout, headers={}, http_proxy=None, no_proxies=None, local_ifs=None):
         super(Http, self).__init__(ai_family, io_timeout, local_ifs)
         self.headers = headers
+        self.response_headers = {}
         self.http_proxy = http_proxy
         self.no_proxies = no_proxies
         self.http_basic_auth = None
@@ -28,21 +29,40 @@ class Http(Connection):
                 break
 
     def init(self, url):
-        self.set_url(url, Connection.TARGET_URL)
+        if self.url_info == {}:
+            self.set_url(url, Connection.TARGET_URL)
         self.check_http_proxy()
         if not self.connect():
             self.disconnect()
             return False
         return True
 
+    def set_filename_from_response(self):
+        if not 'Content-Disposition' in self.response_headers:
+            return
+        # This regex needs to be improved.
+        filename = re.compile(
+            '^.*filename=[\'\"](.*)[\'\"]$'
+        ).findall(self.response_headers['Content-Disposition'])[0]
+        # Replace common invalid characters in filename
+	    # https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
+        for char in '/\\?%*:|<>':
+            filename = filename.replace('_', char)
+        self.output_filename = filename
+
     def get_info(self):
+        if not self.is_connected():
+            raise Exception(f'Exception in {__name__}: init() needs to be called first.')
         while True:
             self.supported = True
             self.current_byte = 0
             self.setup()
             self.execute()
+            self.disconnect()
+            self.set_filename_from_response()
             if self.status_code // 100 != 3:
                 break
+            
 
     def setup(self):
         self.first_byte = -1
@@ -57,12 +77,20 @@ class Http(Connection):
             sys.stderr.write(self.request)
             sys.stderr.write('--- End of request ---\n')
         self.request = ''.join([self.request, '\r\n'])
-        self.tcp.send(self.request.encode('utf-8'))
+        try:
+            self.tcp.send(self.request.encode('utf-8'))
+        except RuntimeError as r:
+            sys.stderr.write(f'{r.message}\n')
+            return False
         # Read the headers byte by byte.
         first_newline = True
         self.response = ''
         while True:
-            recv_char = self.tcp.recv(1).decode('utf-8')
+            try:
+                recv_char = self.tcp.recv(1).decode('utf-8')
+            except RuntimeError as r:
+                sys.stderr.write(f'{r.message}\n')
+                return False
             if recv_char == '\r':
                 continue
             elif recv_char == '\n':
@@ -77,8 +105,14 @@ class Http(Connection):
             sys.stderr.write('--- Reply headers ---\n')
             sys.stderr.write(self.response)
             sys.stderr.write('--- End of headers ---\n')
-        sys.exit(2)
-        # self.headers = None
+        response_lines = self.response.split('\n')
+        self.status_code = int(response_lines[0].split(' ')[1])
+        for line in response_lines[1:]:
+            if line == '':
+                continue
+            [key, value] = line.split(': ')
+            self.response_headers[key] = value
+        return self.status_code // 100 == 2
 
     def connect(self):
         url_type = Connection.TARGET_URL

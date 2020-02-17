@@ -31,6 +31,7 @@ class Connection(object):
 
     TARGET_URL = 'target_url'
     HTTP_PROXY_URL = 'http_proxy_url'
+    REDIRECT_URL = 'redirect_url'
 
     def __init__(self, ai_family, io_timeout, local_ifs=None):
         self.ai_family = ai_family
@@ -42,6 +43,7 @@ class Connection(object):
         self.status_code = 0
         self.target_scheme = None
         self.url_info = {}
+        self.file_size = None
 
     def is_connected(self):
         return self.tcp.is_connected()
@@ -118,17 +120,26 @@ class Connection(object):
         file_dir, file = re.compile('^(.*/)([^/]*)$').findall(path)[0]
         return file_dir, file
 
-    def generate_original_url(self):
-        url = Connection.get_scheme(self.scheme)
-        if self.user != '' and self.password != '':
-            url = ''.join([url_scheme, self.user, ':', self.password, '@'])
-        return ''.join([url, self.hostname, ':', str(self.port), self.dir, self.file])
-
     def get_url_filename(self):
         return self.url_info[TARGET_URL]['file']
 
     def strip_cgi_parameters(self):
         self.url_info[TARGET_URL]['cgi_params'] = None
+
+    def generate_url(self, url_type=TARGET_URL, with_cgi_params=False):
+        info = self.url_info[url_type]
+        full_url = self.get_scheme(info['scheme'])
+        if info['user'] and info['user'] != 'anonymous':
+            full_url = ''.join([
+                full_url, info['user'], ':', info['password'], '@'
+            ])
+        full_url = ''.join([
+            full_url, info['host'], ':', info['port'],
+            info['file_dir'], info['file']
+        ])
+        if with_cgi_params:
+            full_url = ''.join([full_url, '?', info['cgi_params']])
+        return full_url
 
     @staticmethod
     def get_scheme(protocol):

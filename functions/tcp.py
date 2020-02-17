@@ -84,7 +84,7 @@ class Tcp(object):
         while totalsent < msglen:
             sent = self.socket_ref.send(data[totalsent:])
             if sent == 0:
-                raise RuntimeError(f'socket connection broken while sending.\n{data}')
+                raise RuntimeError(f'Socket connection broken while sending.\n{data}')
             totalsent += sent
 
     @staticmethod

@@ -23,6 +23,7 @@ class Search(object):
             self.conn = Http(
                 self.config.ai_family,
                 self.config.io_timeout,
+                self.config.max_redirect,
                 self.config.headers,
                 self.config.http_proxy,
                 self.config.no_proxies,

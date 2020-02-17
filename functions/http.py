@@ -8,8 +8,9 @@ from .connection import Connection
 from .config import PYXEL_DEBUG
 
 class Http(Connection):
-    def __init__(self, ai_family, io_timeout, headers={}, http_proxy=None, no_proxies=None, local_ifs=None):
+    def __init__(self, ai_family, io_timeout, max_redirect, headers={}, http_proxy=None, no_proxies=None, local_ifs=None):
         super(Http, self).__init__(ai_family, io_timeout, local_ifs)
+        self.max_redirect = max_redirect
         self.headers = headers
         self.response_headers = {}
         self.http_proxy = http_proxy
@@ -37,9 +38,9 @@ class Http(Connection):
             return False
         return True
 
-    def set_filename_from_response(self):
+    def get_filename_from_response(self):
         if not 'Content-Disposition' in self.response_headers:
-            return
+            return None
         # This regex needs to be improved.
         filename = re.compile(
             '^.*filename=[\'\"](.*)[\'\"]$'
@@ -48,21 +49,79 @@ class Http(Connection):
 	    # https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
         for char in '/\\?%*:|<>':
             filename = filename.replace('_', char)
-        self.output_filename = filename
+        return filename
+
+    def get_size_from_length(self):
+        if not 'Content-Length' in self.response_headers:
+            return -2
+        return int(self.response_headers['Content-Length'])
+
+    def get_size_from_range(self):
+        if not 'Content-Range' in self.response_headers:
+            return None
+        filesize = re.compile(
+            '^.*/(.*)$'
+        ).findall(self.response_headers['Content-Disposition'])[0]
+        return int(filesize)
+    
+    def get_location_from_response(self):
+        if not 'location' in self.response_headers:
+            return None
+        return self.response_headers['location']
 
     def get_info(self):
         if not self.is_connected():
             raise Exception(f'Exception in {__name__}: init() needs to be called first.')
+        redirect_count = 0
         while True:
             self.supported = True
             self.current_byte = 0
             self.setup()
             self.execute()
             self.disconnect()
-            self.set_filename_from_response()
+            filename = self.get_filename_from_response()
+            if filename:
+                self.output_filename = filename
             if self.status_code // 100 != 3:
                 break
+            # Following code needs to be tested thoroughly.
+            redirect_count += 1
+            if redirect_count > self.max_redirect:
+                sys.stderr.write('Too many redirects.\n')
+                return False
+            redirect_url = self.get_location_from_response()
+            if redirect_url is None:
+                return False
+            info = self.url_info[self.TARGET_URL]
+            if redirect_url[0] == '/':
+                redirect_url = '%s%s:%i%s' % \
+                    (
+                        self.get_scheme(info['scheme']),
+                        info['host'],
+                        info['port'],
+                        redirect_url
+                    )
+            elif redirect_url.find('://') < 0:
+                redirect_url = .join([self.generate_url(), redirect_url])
+            self.set_url(redirect_url, self.REDIRECT_URL)
+            if self.get_scheme_from_url(redirect_url) in (self.FTP, self.FTPS):
+                raise Exception(f'Exception in {__name__}: HTTP redirects to FTP, unsupported feature.')
             
+            # Check for non-recoverable errors.
+            if self.status_code != 416 and self.status_code // 100 != 2:
+                return False
+            self.file_size = self.get_size_from_range()
+            # We assume partial requests are supported if a Content-Range
+            # header is present.
+            self.supported = (self.status_code == 206) or (self.file_size > 0)
+            if self.file_size <= 0:
+                if self.status_code not in (200, 206, 416):
+                    return False
+                    self.supported = False
+                    self.file_size = sys.maxsize
+            else:
+                self.file_size = max(self.file_size, self.get_size_from_length())
+        return True
 
     def setup(self):
         self.first_byte = -1

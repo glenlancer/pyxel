@@ -17,7 +17,7 @@ class Search(object):
         self.config = config
         self.url = self.config.command_url
 
-    def makelist(self, download_records):
+    def makelist(self, downloaders):
         current_time = time.time()
         if Connection.get_scheme_from_url(self.url) in (Connection.HTTP, Connection.HTTPS):
             self.conn = Http(

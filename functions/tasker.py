@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from .search import Search
-from .connection import DownloadRecord
+from .connection import Downloader
 
 # python3 pyxel.py --search http://file.allitebooks.com/20200215/Serverless%20Programming%20Cookbook.pdf
 
@@ -16,8 +16,8 @@ class Tasker(object):
         if self.config.do_search:
             if self.config.verbose:
                 print('Doing search...')
-            download_records = [DownloadRecord()] * (self.config.search_amount + 1)
-            self.search.makelist(download_records)
+            downloaders = [Downloader()] * (self.config.search_amount + 1)
+            self.search.makelist(downloaders)
         else:
             pass
             

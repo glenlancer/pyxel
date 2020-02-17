@@ -8,7 +8,10 @@ from .connection import Connection
 from .config import PYXEL_DEBUG
 
 class Http(Connection):
-    def __init__(self, ai_family, io_timeout, max_redirect, headers={}, http_proxy=None, no_proxies=None, local_ifs=None):
+    def __init__(
+        self,
+        ai_family, io_timeout, max_redirect, headers={},
+        http_proxy=None, no_proxies=None, local_ifs=None):
         super(Http, self).__init__(ai_family, io_timeout, local_ifs)
         self.max_redirect = max_redirect
         self.headers = headers
@@ -18,66 +21,35 @@ class Http(Connection):
         self.http_basic_auth = None
         self.supported = True
         self.current_byte = 0
-        self.request = ''
-        self.response = ''
+        self.request = None
+        self.response = None
         self.first_byte = 0
         self.last_byte = 0
 
-    def check_http_proxy(self):
+    def check_if_no_proxy(self):
         for no_proxy in self.no_proxies:
             if self.hostname == no_proxy:
                 self.http_proxy = None
                 break
 
-    def init(self, url):
-        if self.url_info == {}:
-            self.set_url(url, Connection.TARGET_URL)
-        self.check_http_proxy()
+    def init_connection(self):
+        if self.url is None:
+            raise Exception(f'Exception in {__name__}: set_url() needs to be called first.')
+        self.check_if_no_proxy()
         if not self.connect():
             self.disconnect()
             return False
         return True
 
-    def get_filename_from_response(self):
-        if not 'Content-Disposition' in self.response_headers:
-            return None
-        # This regex needs to be improved.
-        filename = re.compile(
-            '^.*filename=[\'\"](.*)[\'\"]$'
-        ).findall(self.response_headers['Content-Disposition'])[0]
-        # Replace common invalid characters in filename
-	    # https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
-        for char in '/\\?%*:|<>':
-            filename = filename.replace('_', char)
-        return filename
-
-    def get_size_from_length(self):
-        if not 'Content-Length' in self.response_headers:
-            return -2
-        return int(self.response_headers['Content-Length'])
-
-    def get_size_from_range(self):
-        if not 'Content-Range' in self.response_headers:
-            return None
-        filesize = re.compile(
-            '^.*/(.*)$'
-        ).findall(self.response_headers['Content-Disposition'])[0]
-        return int(filesize)
-    
-    def get_location_from_response(self):
-        if not 'location' in self.response_headers:
-            return None
-        return self.response_headers['location']
-
-    def get_info(self):
+    def get_resource_info(self):
         if not self.is_connected():
             raise Exception(f'Exception in {__name__}: init() needs to be called first.')
         redirect_count = 0
         while True:
             self.supported = True
             self.current_byte = 0
-            self.setup()
-            self.execute()
+            self.send_get_request()
+            self.recv_get_response()
             self.disconnect()
             filename = self.get_filename_from_response()
             if filename:
@@ -123,14 +95,12 @@ class Http(Connection):
                 self.file_size = max(self.file_size, self.get_size_from_length())
         return True
 
-    def setup(self):
+    def send_get_request(self):
         self.first_byte = -1
         if self.supported:
             self.first_byte = self.current_byte
         self.http_basic_get()
         self.http_additional_headers()
-
-    def execute(self):
         if PYXEL_DEBUG:
             sys.stderr.write('--- Sending request ---\n')
             sys.stderr.write(self.request)
@@ -141,6 +111,9 @@ class Http(Connection):
         except RuntimeError as r:
             sys.stderr.write(f'{r.message}\n')
             return False
+        return True
+
+    def recv_get_response(self):
         # Read the headers byte by byte.
         first_newline = True
         self.response = ''
@@ -174,22 +147,18 @@ class Http(Connection):
         return self.status_code // 100 == 2
 
     def connect(self):
-        url_type = Connection.TARGET_URL
         if self.http_proxy is not None:
-            self.set_url(self.http_proxy, Connection.HTTP_PROXY_URL)
-            url_type = Connection.HTTP_PROXY_URL
+            self.set_url(self.http_proxy)
         if not self.tcp.connect(
-            self.url_info[url_type]['hostname'],
-            self.url_info[url_type]['port'],
-            self.is_secure_scheme(self.url_info[url_type]['scheme']),
+            self.host,
+            self.port,
+            self.is_secure_scheme(self.scheme),
             self.ai_family,
             self.io_timeout,
             self.local_ifs):
             return False
-        if self.url_info[url_type]['user'] and self.url_info[url_type]['password']:
-            self.basic_auth_token(
-                self.url_info[url_type]['user'], self.url_info[url_type]['password']
-            )
+        if self.user and self.password:
+            self.basic_auth_token(self.user, self.password)
         return True
 
     def disconnect(self):
@@ -200,19 +169,18 @@ class Http(Connection):
 
     def http_basic_get(self):
         self.request = ''
-        info = self.url_info[Connection.TARGET_URL]
         if self.http_proxy is None:
-            self.add_header(f'GET %s%s HTTP/1.0' % (info['file_dir'], info['file']))
-            if self.is_default_port(info['scheme'], info['port']):
-                self.add_header(f'Host: %s' % (info['hostname']))
+            self.add_header(f'GET %s%s HTTP/1.0' % (self.dir, self.file))
+            if self.is_default_port(self.scheme, self.port):
+                self.add_header(f'Host: %s' % (self.host))
             else:
-                self.add_header(f'Host: %s:%d' % (info['hostname'], info['port']))
+                self.add_header(f'Host: %s:%d' % (self.host, self.port))
         else:
-            proto_str = Connection.get_scheme(info['scheme'])
-            if self.is_default_port(info['port']):
-                get_str = ''.join([proto_str, info['hostname'], info['file_dir'], info['file']])
+            proto_str = Connection.get_scheme(self.scheme)
+            if self.is_default_port(self.port):
+                get_str = ''.join([proto_str, self.host, self.dir, self.file)
             else:
-                get_str = ''.joing([proto_str, info['hostname'], info['file_dir'], info['file']])
+                get_str = ''.joing([proto_str, self.host, self.dir, self.file)
             self.add_header('GET %s HTTP/1.0' % (get_str))
         if self.http_basic_auth:
             self.add_header(f'Authorization: Basic %s' % (self.http_basic_auth))
@@ -227,13 +195,44 @@ class Http(Connection):
         for key, value in self.headers.items():
             self.add_header(f'{key}: {value}')
 
-    def add_header(self, new_header):
-        self.request = ''.join([self.request, new_header, '\r\n'])
+    def add_header(self, header):
+        self.request = ''.join([self.request, header, '\r\n'])
 
     def is_default_port(self, scheme, port):
-        if scheme == Connection.HTTP:
-            return port == Connection.HTTP_DEFAULT_PORT
-        elif scheme == Connection.HTTPS:
-            return port == Connection.HTTPS_DEFAULT_PORT
+        if scheme == self.HTTP:
+            return port == self.HTTP_DEFAULT_PORT
+        elif scheme == self.HTTPS:
+            return port == self.HTTPS_DEFAULT_PORT
         else:
             raise Exception(f'Exception in {__name__}: Unknown scheme for Http.')
+
+    def get_filename_from_response(self):
+        if not 'Content-Disposition' in self.response_headers:
+            return None
+        # This regex needs to be improved.
+        filename = re.compile(
+            '^.*filename=[\'\"](.*)[\'\"]$'
+        ).findall(self.response_headers['Content-Disposition'])[0]
+        # Replace common invalid characters in filename
+	    # https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
+        for char in '/\\?%*:|<>':
+            filename = filename.replace('_', char)
+        return filename
+
+    def get_size_from_length(self):
+        if not 'Content-Length' in self.response_headers:
+            return -2
+        return int(self.response_headers['Content-Length'])
+
+    def get_size_from_range(self):
+        if not 'Content-Range' in self.response_headers:
+            return None
+        filesize = re.compile(
+            '^.*/(.*)$'
+        ).findall(self.response_headers['Content-Disposition'])[0]
+        return int(filesize)
+    
+    def get_location_from_response(self):
+        if not 'location' in self.response_headers:
+            return None
+        return self.response_headers['location']

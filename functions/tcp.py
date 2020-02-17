@@ -14,10 +14,10 @@ class Tcp(object):
     def is_connected(self):
         return self.socket_ref != None
 
-    def connect(self, hostname, port, is_secure, ai_family, io_timeout, local_if=None):
+    def connect(self, host, port, is_secure, ai_family, io_timeout, local_if=None):
         try:
             gai_results = socket.getaddrinfo(
-                hostname,
+                host,
                 port,
                 ai_family,
                 socket.SOCK_STREAM,
@@ -25,7 +25,7 @@ class Tcp(object):
                 socket.AI_ADDRCONFIG
             )
         except socket.gaierror as e:
-            Tcp.print_error(hostname, port, e.message)
+            Tcp.print_error(host, port, e.message)
             return False
         for gai_result in gai_results:
             t_ai_family, ai_sockettype, ai_protocol, _, ai_addr = gai_result
@@ -39,12 +39,12 @@ class Tcp(object):
                 self.socket_ref.setblocking(0)
                 self.socket_ref.settimeout(io_timeout)
                 # Does this mean the port number is dynamic allocated?
-                #if local_if is not None and t_ai_family == socket.AF_INET:
-                #    self.socket_ref.bind((local_if, 0))
+                if local_if is not None and t_ai_family == socket.AF_INET:
+                    self.socket_ref.bind((local_if, 0))
                 self.socket_ref.setsockopt(socket.IPPROTO_TCP, socket.TCP_FASTOPEN, 1)
                 self.socket_ref.connect(ai_addr)
             except socket.error as e:
-                Tcp.print_error(hostname, port, e.message)
+                Tcp.print_error(host, port, e.message)
                 self.socket_ref = None
             if self.socket_ref is not None:
                 break
@@ -79,6 +79,8 @@ class Tcp(object):
     def send(self, data):
         if self.socket_ref is None:
             raise Exception(f'Exception in {__name__}: socket_ref is None.')
+        if isinstance(data, bytes):
+            raise Exception(f'Exception in {__name__}: incorrect data type for {data}')
         totalsent = 0
         msglen = len(data)
         while totalsent < msglen:
@@ -98,6 +100,3 @@ class Tcp(object):
         except socket.error:
             return False
         return True
-
-    def get_interface_ip(self, interface):
-        pass

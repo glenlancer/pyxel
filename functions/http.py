@@ -42,12 +42,12 @@ class Http(Connection):
         return True
 
     def get_resource_info(self):
-        if not self.is_connected():
-            raise Exception(f'Exception in {__name__}: init() needs to be called first.')
         redirect_count = 0
         while True:
             self.supported = True
             self.current_byte = 0
+            if (not self.is_connected()) and (not self.init_connection()):
+                return False
             self.send_get_request()
             self.recv_get_response()
             self.disconnect()
@@ -64,35 +64,33 @@ class Http(Connection):
             redirect_url = self.get_location_from_response()
             if redirect_url is None:
                 return False
-            info = self.url_info[self.TARGET_URL]
             if redirect_url[0] == '/':
                 redirect_url = '%s%s:%i%s' % \
                     (
-                        self.get_scheme(info['scheme']),
-                        info['host'],
-                        info['port'],
+                        self.get_scheme(self.scheme),
+                        self.host,
+                        self.port,
                         redirect_url
                     )
             elif redirect_url.find('://') < 0:
-                redirect_url = .join([self.generate_url(), redirect_url])
-            self.set_url(redirect_url, self.REDIRECT_URL)
+                redirect_url = ''.join([self.generate_url(), redirect_url])
+            self.set_url(redirect_url)
             if self.get_scheme_from_url(redirect_url) in (self.FTP, self.FTPS):
                 raise Exception(f'Exception in {__name__}: HTTP redirects to FTP, unsupported feature.')
-            
-            # Check for non-recoverable errors.
-            if self.status_code != 416 and self.status_code // 100 != 2:
+        # Check for non-recoverable errors.
+        if self.status_code != 416 and self.status_code // 100 != 2:
+            return False
+        self.file_size = self.get_size_from_range()
+        # We assume partial requests are supported if a Content-Range
+        # header is present.
+        self.supported = (self.status_code == 206) or (self.file_size > 0)
+        if self.file_size <= 0:
+            if self.status_code not in (200, 206, 416):
                 return False
-            self.file_size = self.get_size_from_range()
-            # We assume partial requests are supported if a Content-Range
-            # header is present.
-            self.supported = (self.status_code == 206) or (self.file_size > 0)
-            if self.file_size <= 0:
-                if self.status_code not in (200, 206, 416):
-                    return False
-                    self.supported = False
-                    self.file_size = sys.maxsize
-            else:
-                self.file_size = max(self.file_size, self.get_size_from_length())
+                self.supported = False
+                self.file_size = sys.maxsize
+        else:
+            self.file_size = max(self.file_size, self.get_size_from_length())
         return True
 
     def send_get_request(self):
@@ -147,18 +145,26 @@ class Http(Connection):
         return self.status_code // 100 == 2
 
     def connect(self):
+        scheme = self.scheme
+        host = self.host
+        port = self.port
+        user = self.user
+        password = self.password
         if self.http_proxy is not None:
-            self.set_url(self.http_proxy)
+            scheme, port, user, password, \
+            host, _, _, _ \
+                = self.analyse_url(self.http_proxy)
         if not self.tcp.connect(
-            self.host,
-            self.port,
-            self.is_secure_scheme(self.scheme),
+            host,
+            port,
+            self.is_secure_scheme(scheme),
             self.ai_family,
             self.io_timeout,
             self.local_ifs):
             return False
-        if self.user and self.password:
-            self.basic_auth_token(self.user, self.password)
+        self.http_basic_auth = None
+        if user and password:
+            self.basic_auth_token(user, password)
         return True
 
     def disconnect(self):
@@ -170,17 +176,17 @@ class Http(Connection):
     def http_basic_get(self):
         self.request = ''
         if self.http_proxy is None:
-            self.add_header(f'GET %s%s HTTP/1.0' % (self.dir, self.file))
+            self.add_header(f'GET %s%s HTTP/1.0' % (self.file_dir, self.file))
             if self.is_default_port(self.scheme, self.port):
                 self.add_header(f'Host: %s' % (self.host))
             else:
                 self.add_header(f'Host: %s:%d' % (self.host, self.port))
         else:
-            proto_str = Connection.get_scheme(self.scheme)
+            proto_str = self.get_scheme(self.scheme)
             if self.is_default_port(self.port):
-                get_str = ''.join([proto_str, self.host, self.dir, self.file)
+                get_str = ''.join([proto_str, self.host, self.file_dir, self.file])
             else:
-                get_str = ''.joing([proto_str, self.host, self.dir, self.file)
+                get_str = ''.joing([proto_str, self.host, self.file_dir, self.file])
             self.add_header('GET %s HTTP/1.0' % (get_str))
         if self.http_basic_auth:
             self.add_header(f'Authorization: Basic %s' % (self.http_basic_auth))
@@ -221,7 +227,7 @@ class Http(Connection):
 
     def get_size_from_length(self):
         if not 'Content-Length' in self.response_headers:
-            return -2
+            return -1
         return int(self.response_headers['Content-Length'])
 
     def get_size_from_range(self):
@@ -229,7 +235,7 @@ class Http(Connection):
             return None
         filesize = re.compile(
             '^.*/(.*)$'
-        ).findall(self.response_headers['Content-Disposition'])[0]
+        ).findall(self.response_headers['Content-Range'])[0]
         return int(filesize)
     
     def get_location_from_response(self):

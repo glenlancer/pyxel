@@ -79,7 +79,7 @@ class Tcp(object):
     def send(self, data):
         if self.socket_ref is None:
             raise Exception(f'Exception in {__name__}: socket_ref is None.')
-        if isinstance(data, bytes):
+        if not isinstance(data, bytes):
             raise Exception(f'Exception in {__name__}: incorrect data type for {data}')
         totalsent = 0
         msglen = len(data)

@@ -1,18 +1,18 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-import re
+import sys, re
 from urllib.parse import urlparse
 from .tcp import Tcp
 
 from .config import PYXEL_DEBUG
 
 class Downloader(object):
-    def __init__(self, url=None):
-        self.url = url
+    def __init__(self):
+        self.url = None
         self.speed_start_time = 0
         self.speed = 0
-        self.size = 0
+        self.file_size = 0
         self.speed_thread = None
 
 class Connection(object):
@@ -38,6 +38,7 @@ class Connection(object):
         self.tcp = Tcp()
         self.status_code = None
         self.file_size = None
+        self.lock = None
         self.init_url_params()
 
     def is_connected(self):
@@ -50,32 +51,38 @@ class Connection(object):
         self.user = None
         self.password = None
         self.host = None
-        self.dir = None
+        self.file_dir = None
         self.file_size = None
         self.cgi_params = None
+
+    def analyse_url(self, url):
+        parse_results = urlparse(url)
+        scheme, port = self.parse_scheme(parse_results.scheme)
+        user, password, host, new_port = self.parse_netloc(parse_results.netloc)
+        file_dir, file = self.parse_path(parse_results.path)
+        if new_port is not None:
+            port = new_port
+        cgi_params = parse_results.query
+        return scheme, port, user, password, host, file_dir, file, cgi_params
 
     def set_url(self, url):
         self.init_url_params()
         self.url = url
-        parse_results = urlparse(self.url)
-        self.scheme, self.port = self.parse_scheme(parse_results.scheme)
-        self.user, self.password, self.host, new_port = self.parse_netloc(parse_results.netloc)
-        self.dir, self.file = self.parse_path(parse_results.path)
-        if new_port is not None:
-            self.port = new_port
-        self.cgi_params = 
+        self.scheme, self.port, self.user, self.password, \
+        self.host, self.file_dir, self.file, self.cgi_params \
+            = self.analyse_url(url)
         if PYXEL_DEBUG:
             sys.stderr.write('--- URL Parsing ---\n')
             sys.stderr.write(f'Url: {self.url}')
             sys.stderr.write('Pasring results:\n')
-            sys.stderr.write(f'Scheme: {self.scheme}')
-            sys.stderr.write(f'Port: {self.port}')
-            sys.stderr.write(f'User: {self.user}')
-            sys.stderr.write(f'Password: {self.password}')
-            sys.stderr.write(f'Host: {self.host}')
-            sys.stderr.write(f'Dir: {self.dir}')
-            sys.stderr.write(f'File: {self.file}')
-            sys.stderr.write(f'Cgi: {self.cgi_params}')
+            sys.stderr.write(f'Scheme: {self.scheme}\n')
+            sys.stderr.write(f'Port: {self.port}\n')
+            sys.stderr.write(f'User: {self.user}\n')
+            sys.stderr.write(f'Password: {self.password}\n')
+            sys.stderr.write(f'Host: {self.host}\n')
+            sys.stderr.write(f'Dir: {self.file_dir}\n')
+            sys.stderr.write(f'File: {self.file}\n')
+            sys.stderr.write(f'Cgi: {self.cgi_params}\n')
             sys.stderr.write('--- End of Url Parsing ---\n')
 
     def parse_scheme(self, scheme):
@@ -139,7 +146,7 @@ class Connection(object):
                 full_url, self.user, ':', self.password, '@'
             ])
         full_url = ''.join([
-            full_url, self.host, ':', self.port, self.dir, self.file
+            full_url, self.host, ':', self.port, self.file_dir, self.file
         ])
         if with_cgi_params:
             full_url = ''.join([full_url, '?', self.cgi_params])
@@ -147,28 +154,28 @@ class Connection(object):
 
     @staticmethod
     def get_scheme(protocol):
-        if protocol == self.FTP:
+        if protocol == Connection.FTP:
             return 'ftp://'
-        elif protocol == self.FTPS:
+        elif protocol == Connection.FTPS:
             return 'ftps://'
-        elif protocol == self.HTTP:
+        elif protocol == Connection.HTTP:
             return 'http://'
-        elif protocol == self.HTTPS:
+        elif protocol == Connection.HTTPS:
             return 'https://'
 
     @staticmethod
     def get_scheme_from_url(url):
         if url.lower().startswith('https://'):
-            return self.HTTPS
+            return Connection.HTTPS
         elif url.lower().startswith('http://'):
-            return self.HTTP
+            return Connection.HTTP
         elif url.lower().startswith('ftps://'):
-            return self.FTPS
+            return Connection.FTPS
         elif url.lower().startswith('ftp://'):
-            return self.FTP
+            return Connection.FTP
         else:
             raise Exception(f'Exception in {__name__}: unsupported scheme from {url}.')
 
     @staticmethod
     def is_secure_scheme(scheme):
-        return (scheme == self.HTTPS) or (scheme == self.FTPS)
+        return (scheme == Connection.HTTPS) or (scheme == Connection.FTPS)

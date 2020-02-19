@@ -4,7 +4,7 @@
 from .search import Search
 from .connection import Downloader
 
-# python3 pyxel.py --search http://file.allitebooks.com/20200215/Serverless%20Programming%20Cookbook.pdf
+# python3 pyxel.py --search=2 http://file.allitebooks.com/20200215/Serverless%20Programming%20Cookbook.pdf
 
 class Tasker(object):
     def __init__(self, config):

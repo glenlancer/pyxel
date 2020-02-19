@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import threading
 from urllib.parse import unquote
 
 from .connection import Connection
@@ -31,6 +32,8 @@ class Process(object):
             )] * self.config.num_connections
         else:
             pass
+        for conn in self.conns:
+            conn.lock = threading.Lock()
 
     def tuning_params(self):
         if self.config.max_speed > 0:
@@ -45,9 +48,9 @@ class Process(object):
             self.delay_time['sec'] = delay // 1000000000
             self.delay_time['nsec'] = delay % 1000000000
 
-    def new_process(self):
+    def new_process(self, url):
         self.prepare_connections()
-        self.conns[0].set_url(url, Connection.TARGET_URL)
+        self.conns[0].set_url(url)
         # Setting local_if here?
         self.conns[0].strip_cgi_parameters()
         self.output_filename = unquote(self.conns[0].get_url_filename())
@@ -60,8 +63,6 @@ class Process(object):
             else:
                 print(f'File {self.output_filename} already exists, not retrieving.')
                 return False
-        
-
 
     def new_process(self, download_records):
         pass

@@ -29,4 +29,4 @@ class Ftp(Connection):
 
     def send_command(self, cmd):
         cmd = ''.join([cmd, '\r\n'])
-        self.tcp.write(cmd)
+        self.tcp.write(cmd.encode('utf-8'))

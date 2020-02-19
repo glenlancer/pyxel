@@ -40,6 +40,10 @@ class Connection(object):
         self.file_size = None
         self.lock = None
         self.init_url_params()
+        self.resuming_supported = True
+        self.first_byte = 0
+        self.current_byte = 0
+        self.last_byte = 0
 
     def is_connected(self):
         return self.tcp.is_connected()

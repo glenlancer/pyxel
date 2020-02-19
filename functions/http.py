@@ -19,12 +19,8 @@ class Http(Connection):
         self.http_proxy = http_proxy
         self.no_proxies = no_proxies
         self.http_basic_auth = None
-        self.supported = True
-        self.current_byte = 0
         self.request = None
         self.response = None
-        self.first_byte = 0
-        self.last_byte = 0
 
     def check_if_no_proxy(self):
         for no_proxy in self.no_proxies:
@@ -44,7 +40,7 @@ class Http(Connection):
     def get_resource_info(self):
         redirect_count = 0
         while True:
-            self.supported = True
+            self.resuming_supported = True
             self.current_byte = 0
             if (not self.is_connected()) and (not self.init_connection()):
                 return False
@@ -83,11 +79,11 @@ class Http(Connection):
         self.file_size = self.get_size_from_range()
         # We assume partial requests are supported if a Content-Range
         # header is present.
-        self.supported = (self.status_code == 206) or (self.file_size > 0)
+        self.resuming_supported = (self.status_code == 206) or (self.file_size > 0)
         if self.file_size <= 0:
             if self.status_code not in (200, 206, 416):
                 return False
-                self.supported = False
+                self.resuming_supported = False
                 self.file_size = sys.maxsize
         else:
             self.file_size = max(self.file_size, self.get_size_from_length())
@@ -95,7 +91,7 @@ class Http(Connection):
 
     def send_get_request(self):
         self.first_byte = -1
-        if self.supported:
+        if self.resuming_supported:
             self.first_byte = self.current_byte
         self.http_basic_get()
         self.http_additional_headers()

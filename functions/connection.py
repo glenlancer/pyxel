@@ -27,7 +27,7 @@ class Connection(object):
     FTPS = 3
 
     ANONYMOUS_USER = 'anonymous'
-    ANONYMOUS_PASS = 'mailto:anonymous@pyxel.project'
+    ANONYMOUS_PASS = 'mailto:anonymous@unkonwn.com'
 
     def __init__(self, ai_family, io_timeout, local_ifs=None):
         self.ai_family = ai_family
@@ -44,6 +44,7 @@ class Connection(object):
         self.first_byte = 0
         self.current_byte = 0
         self.last_byte = 0
+        self.message = None
 
     def is_connected(self):
         return self.tcp.is_connected()
@@ -180,6 +181,5 @@ class Connection(object):
         else:
             raise Exception(f'Exception in {__name__}: unsupported scheme from {url}.')
 
-    @staticmethod
-    def is_secure_scheme(scheme):
-        return (scheme == Connection.HTTPS) or (scheme == Connection.FTPS)
+    def is_secure_scheme(self):
+        return (self.scheme == self.HTTPS) or (self.scheme == self.FTPS)

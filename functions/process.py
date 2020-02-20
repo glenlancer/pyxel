@@ -93,12 +93,48 @@ class Process(object):
 
     def open_process(self, urls):
         if self.config.verbose:
+            self.add_message(f'Opening output file {self.output_filename}')
+        self.buffer_filename = ''.join([self.output_filename, '.st'])
+
+        # Check if server knows about RESTart and switch back to single connection
+        # download if necessary.
+        fd = None
+        if not self.conns[0].resuming_supported:
+            self.add_message(
+                'Server doen\'t support resuming, '
+                'starting from scratch with one connection.'
+            )
+            self.config.num_of_connections = 1
+            self.divide()
+        else:
+            fd = self.load_state()
+
 
     def add_message(self, message):
         self.messages.append(message)
 
     def close(self):
         pass
+
+    def load_state(self):
+        try:
+            fd = os.open(self.buffer_filename, os.O_RDONLY)
+            file_size = os.lseek(fd, 0, os.SEEK_END)
+            os.lseek(fd, 0, os.SEEK_SET)
+            read_in_bytes = os.read(fd, struct.calcsize('I'))
+            if len(read_in_bytes) != struct.calcsize('I'):
+                print(f'{self.buffer_filename}: Error, truncated state file.')
+                os.close(fd)
+                return 0
+            self.config.num_of_connections = read_in_bytes.decode()
+            if self.config.num_of_connections < 1:
+                print('Bogus number of connections stored in state file.')
+                os.close(fd)
+                return 0
+        except Exception as e:
+            sys.stderr.write(f'Can\'t load file {self.buffer_filename}: {e.message}\n')
+            return -1
+       
 
     def save_state(self):
         # No use for .st file if the server doesn't support resuming.

@@ -141,19 +141,18 @@ class Http(Connection):
         return self.status_code // 100 == 2
 
     def connect(self):
-        scheme = self.scheme
         host = self.host
         port = self.port
         user = self.user
         password = self.password
         if self.http_proxy is not None:
-            scheme, port, user, password, \
+            _, port, user, password, \
             host, _, _, _ \
                 = self.analyse_url(self.http_proxy)
         if not self.tcp.connect(
             host,
             port,
-            self.is_secure_scheme(scheme),
+            self.is_secure_scheme(),
             self.ai_family,
             self.io_timeout,
             self.local_ifs):

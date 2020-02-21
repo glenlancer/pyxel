@@ -92,7 +92,7 @@ class Http(Connection):
         self.first_byte = -1
         if self.resuming_supported:
             self.first_byte = self.current_byte
-        self.http_basic_get()
+        self.build_basic_get()
         self.http_additional_headers()
         if PYXEL_DEBUG:
             sys.stderr.write('--- Sending request ---\n')
@@ -167,8 +167,21 @@ class Http(Connection):
     def basic_auth_token(self, user, password):
         self.http_basic_auth = base64.b64encode(f'{user}:{password}').strip()
 
-    def http_basic_get(self):
+    def build_basic_get(self):
         self.request = ''
+        self.add_request_head()
+        if self.http_basic_auth:
+            self.add_header(f'Authorization: Basic %s' % (self.http_basic_auth))
+        self.add_header('Accept: */*')
+        self.add_range_header()
+
+    def add_range_header(self):
+        if self.first_byte >= 0 and self.last_byte:
+            self.add_header('Range: bytes=%d-%d' % (self.first_byte, self.last_byte))
+        else:
+            self.add_header('Range: bytes=%d-' % (self.first_byte))
+
+    def add_request_head(self):
         if self.http_proxy is None:
             self.add_header(f'GET %s%s HTTP/1.0' % (self.file_dir, self.file))
             if self.is_default_port(self.scheme, self.port):
@@ -182,14 +195,6 @@ class Http(Connection):
             else:
                 get_str = ''.joing([proto_str, self.host, self.file_dir, self.file])
             self.add_header('GET %s HTTP/1.0' % (get_str))
-        if self.http_basic_auth:
-            self.add_header(f'Authorization: Basic %s' % (self.http_basic_auth))
-        self.add_header('Accept: */*')
-        if self.first_byte >= 0:
-            if self.last_byte:
-                self.add_header('Range: bytes=%d-%d' % (self.first_byte, self.last_byte))
-            else:
-                self.add_header('Range: bytes=%d-' % (self.first_byte))
 
     def http_additional_headers(self):
         for key, value in self.headers.items():

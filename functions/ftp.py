@@ -62,7 +62,7 @@ class Ftp(Connection):
         227 Passive mode on (115,47,68,228,35,40)
         '''
         if self.is_data_connected():
-            return False
+            return True
         self.ftp_command('PASV')
         if self.is_wait_nok(2) or len(self.ftp_replies) != 1:
             sys.stderr.write(f'Ftp reply for PASV incorrect: {self.ftp_replies}')
@@ -177,8 +177,21 @@ class Ftp(Connection):
         # Try the SIZE command first.
         self.ftp_command(f'SIZE {self.file}')
         if self.is_wait_nok(2):
-        
+            result = self.ftp_replies[0].split(' ')
+            if len(result) == 2:
+                return int(result[1])
         elif self.status_code // 100 != 5:
             sys.stderr.write('File not found.\n')
+            return -1
+
+        if self.max_redirect == 0:
+            sys.stderr.write('Too many redirects.\n')
+            return -1
+
+        if not self.ftp_data_connect():
+            return -1
+
+        self.ftp_command(f'LIST {self.file}')
+        if self.is_wait_nok(1):
             return -1
 

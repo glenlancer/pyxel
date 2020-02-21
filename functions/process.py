@@ -26,8 +26,14 @@ class Process(object):
         }
         self.tuning_params()
 
+    def __del__(self):
+        for message in self.messages:
+            print('Dump all stored messages.')
+            print(message)
+
     def prepare_connections(self):
         if Connection.get_scheme_from_url(self.url) in (Connection.HTTP, Connection.HTTPS):
+            # Reminder, pass in local_ifs
             self.conns = [Http(
                 self.config.ai_family,
                 self.config.io_timeout,
@@ -37,9 +43,12 @@ class Process(object):
                 self.config.no_proxies,
             )]
         else:
-            pass
-        for conn in self.conns:
-            conn.lock = threading.Lock()
+            self.conns = [Ftp(
+                self.config.ai_family,
+                self.config.io_timeout,
+                self.config.max_redirect,
+            )]
+        conn[0].lock = threading.Lock()
 
     def tuning_params(self):
         if self.config.max_speed > 0:
@@ -109,7 +118,6 @@ class Process(object):
         else:
             fd = self.load_state()
 
-
     def add_message(self, message):
         self.messages.append(message)
 
@@ -163,3 +171,5 @@ class Process(object):
             nwrite = os.write(fd, last_byte)
             assert(nwrite == len(last_byte))
         os.close(fd)
+
+    def print_messages()

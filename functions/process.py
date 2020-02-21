@@ -35,7 +35,7 @@ class Process(object):
                 self.config.headers,
                 self.config.http_proxy,
                 self.config.no_proxies,
-            )] * self.config.num_of_connections
+            )]
         else:
             pass
         for conn in self.conns:

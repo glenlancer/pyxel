@@ -29,9 +29,10 @@ class Connection(object):
     ANONYMOUS_USER = 'anonymous'
     ANONYMOUS_PASS = 'mailto:anonymous@unkonwn.com'
 
-    def __init__(self, ai_family, io_timeout, local_ifs=None):
+    def __init__(self, ai_family, io_timeout, max_redirect, local_ifs=None):
         self.ai_family = ai_family
         self.io_timeout = io_timeout
+        self.max_redirect = max_redirect
         self.local_ifs = local_ifs
         self.output_filename = None
         self.request = None

@@ -12,8 +12,7 @@ class Http(Connection):
         self,
         ai_family, io_timeout, max_redirect, headers={},
         http_proxy=None, no_proxies=None, local_ifs=None):
-        super(Http, self).__init__(ai_family, io_timeout, local_ifs)
-        self.max_redirect = max_redirect
+        super(Http, self).__init__(ai_family, io_timeout, max_redirect, local_ifs)
         self.headers = headers
         self.response_headers = {}
         self.http_proxy = http_proxy

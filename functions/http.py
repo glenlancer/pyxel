@@ -10,10 +10,10 @@ from .config import PYXEL_DEBUG
 class Http(Connection):
     def __init__(
         self,
-        ai_family, io_timeout, max_redirect, headers={},
+        ai_family, io_timeout, max_redirect, request_headers={},
         http_proxy=None, no_proxies=None, local_ifs=None):
         super(Http, self).__init__(ai_family, io_timeout, max_redirect, local_ifs)
-        self.headers = headers
+        self.request_headers = request_headers
         self.response_headers = {}
         self.http_proxy = http_proxy
         self.no_proxies = no_proxies
@@ -26,6 +26,31 @@ class Http(Connection):
             if self.hostname == no_proxy:
                 self.http_proxy = None
                 break
+
+    def connect(self):
+        host = self.host
+        port = self.port
+        user = self.user
+        password = self.password
+        if self.http_proxy is not None:
+            _, port, user, password, \
+            host, _, _, _ \
+                = self.analyse_url(self.http_proxy)
+        if not self.tcp.connect(
+            host,
+            port,
+            self.is_secure_scheme(),
+            self.ai_family,
+            self.io_timeout,
+            self.local_ifs):
+            return False
+        self.http_basic_auth = None
+        if user and password:
+            self.basic_auth_token(user, password)
+        return True
+
+    def disconnect(self):
+        self.tcp.close()
 
     def init_connection(self):
         if self.url is None:
@@ -42,51 +67,30 @@ class Http(Connection):
             self.resuming_supported = True
             self.current_byte = 0
             if (not self.is_connected()) and (not self.init_connection()):
-                return False
+                return False, 'connecting_failed'
             self.send_get_request()
             self.recv_get_response()
             self.disconnect()
-            filename = self.get_filename_from_response()
-            if filename:
-                self.output_filename = filename
+            self.set_filename_from_response()
             if self.status_code // 100 != 3:
                 break
             # Following code needs to be tested thoroughly.
             redirect_count += 1
             if redirect_count > self.max_redirect:
                 sys.stderr.write('Too many redirects.\n')
-                return False
-            redirect_url = self.get_location_from_response()
+                return False, 'too_many_redirects'
+            redirect_url = self.get_redirect_url_from_response()
             if redirect_url is None:
                 return False
-            if redirect_url[0] == '/':
-                redirect_url = '%s%s:%i%s' % \
-                    (
-                        self.get_scheme(self.scheme),
-                        self.host,
-                        self.port,
-                        redirect_url
-                    )
-            elif redirect_url.find('://') < 0:
-                redirect_url = ''.join([self.generate_url(), redirect_url])
             self.set_url(redirect_url)
             if self.get_scheme_from_url(redirect_url) in (self.FTP, self.FTPS):
-                raise Exception(f'Exception in {__name__}: HTTP redirects to FTP, unsupported feature.')
+                return True, 'redirect_to_ftp'
         # Check for non-recoverable errors.
         if self.status_code != 416 and self.status_code // 100 != 2:
-            return False
-        self.file_size = self.get_size_from_range()
-        # We assume partial requests are supported if a Content-Range
-        # header is present.
-        self.resuming_supported = (self.status_code == 206) or (self.file_size > 0)
-        if self.file_size <= 0:
-            if self.status_code not in (200, 206, 416):
-                return False
-                self.resuming_supported = False
-                self.file_size = self.MAX_FILESIZE
-        else:
-            self.file_size = max(self.file_size, self.get_size_from_length())
-        return True
+            return False, 'unrecoverable_errors'
+        if self.set_filesize():
+            return True, 'ok'
+        return False, 'no_file_size'
 
     def send_get_request(self):
         self.first_byte = -1
@@ -139,31 +143,6 @@ class Http(Connection):
             self.response_headers[key] = value
         return self.status_code // 100 == 2
 
-    def connect(self):
-        host = self.host
-        port = self.port
-        user = self.user
-        password = self.password
-        if self.http_proxy is not None:
-            _, port, user, password, \
-            host, _, _, _ \
-                = self.analyse_url(self.http_proxy)
-        if not self.tcp.connect(
-            host,
-            port,
-            self.is_secure_scheme(),
-            self.ai_family,
-            self.io_timeout,
-            self.local_ifs):
-            return False
-        self.http_basic_auth = None
-        if user and password:
-            self.basic_auth_token(user, password)
-        return True
-
-    def disconnect(self):
-        self.tcp.close()
-
     def basic_auth_token(self, user, password):
         self.http_basic_auth = base64.b64encode(f'{user}:{password}').strip()
 
@@ -197,7 +176,7 @@ class Http(Connection):
             self.add_header('GET %s HTTP/1.0' % (get_str))
 
     def http_additional_headers(self):
-        for key, value in self.headers.items():
+        for key, value in self.request_headers.items():
             self.add_header(f'{key}: {value}')
 
     def add_header(self, header):
@@ -211,9 +190,24 @@ class Http(Connection):
         else:
             raise Exception(f'Exception in {__name__}: Unknown scheme for Http.')
 
-    def get_filename_from_response(self):
+    def set_filesize(self):
+        self.file_size = self.get_size_from_range()
+        # We assume partial requests are supported if a Content-Range
+        # header is present.
+        self.resuming_supported = (self.status_code == 206) or (self.file_size > 0)
+        if self.file_size <= 0:
+            if self.status_code not in (200, 206, 416):
+                return False
+            self.resuming_supported = False
+            self.file_size = self.MAX_FILESIZE
+        else:
+            self.file_size = max(self.file_size, self.get_size_from_length())
+        return True
+
+    def set_filename_from_response(self):
+        filename = None
         if not 'Content-Disposition' in self.response_headers:
-            return None
+            return
         # This regex needs to be improved.
         filename = re.compile(
             '^.*filename=[\'\"](.*)[\'\"]$'
@@ -222,7 +216,8 @@ class Http(Connection):
 	    # https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
         for char in '/\\?%*:|<>':
             filename = filename.replace('_', char)
-        return filename
+        if filename:
+            self.output_filename = filename
 
     def get_size_from_length(self):
         if not 'Content-Length' in self.response_headers:
@@ -236,7 +231,23 @@ class Http(Connection):
             '^.*/(.*)$'
         ).findall(self.response_headers['Content-Range'])[0]
         return int(filesize)
-    
+
+    def get_redirect_url_from_response(self):
+        redirect_url = self.get_location_from_response()
+        if redirect_url is None:
+            return None
+        elif redirect_url[0] == '/':
+            return '%s%s:%i%s' % \
+                (
+                    self.get_scheme(self.scheme),
+                    self.host,
+                    self.port,
+                    redirect_url
+                )
+        elif redirect_url.find('://') < 0:
+            return ''.join([self.generate_url(), redirect_url])
+        return redirect_url
+
     def get_location_from_response(self):
         if not 'location' in self.response_headers:
             return None

@@ -2,23 +2,24 @@
 # -*- coding: utf-8 -*-
 
 from .search import Search
-from .connection import Downloader
+from .process import Process
 
 # python3 pyxel.py --search=2 http://file.allitebooks.com/20200215/Serverless%20Programming%20Cookbook.pdf
 
 class Tasker(object):
-    def __init__(self, config):
+    def __init__(self, config, url):
         self.config = config
-        self.search = Search(config)
+        self.url = url
+        self.search = Search(config, url)
+        self.process = Process(config, url)
 
     def start_task(self):
-        print(f'Initializing download: {self.config.command_url}')
+        print(f'Initializing download: {self.url}')
         if self.config.do_search:
-            if self.config.verbose:
-                print('Doing search...')
-            downloaders = [Downloader()] * (self.config.search_amount + 1)
-            self.search.makelist(downloaders)
-        else:
-            pass
-            
-        # Do some parameter validation here.
+            # Do nothing..
+            print('do_search is not supported yet.')
+        if not self.process.new_preparation(url):
+            self.process.print_messages()
+            return False
+        
+        

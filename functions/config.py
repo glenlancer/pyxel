@@ -10,9 +10,8 @@ class Config(object):
     AF_UNSPEC = socket.AF_UNSPEC
 
     def __init__(self):
-        self.command_url = None
-        self.default_filename = 'default_filename'
-        self.output = None
+        self.default_filename = 'pyxel_gathering'
+        self.output_filename = None
         self.http_proxy = None
         self.no_proxies = []
         self.strip_cgi_parameters = 1
@@ -37,7 +36,7 @@ class Config(object):
         self.ai_family = Config.AF_UNSPEC
         self.headers = {}
         self.set_header('User-Agent', self.__DEFAULT_USER_AGENT)
-        self.local_ifs = []
+        self.interfaces = ['wlp1s0']
         self.standard_output = None
 
     def set_header(self, key, value):

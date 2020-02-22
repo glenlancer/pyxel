@@ -73,7 +73,7 @@ def command_process(argv, config):
             config.max_redirect = int(arg)
         elif opt in ('-o', '--output'):
             if is_filename_valid(arg):
-                config.output = arg
+                config.output_filename = arg
             else:
                 raise Exception(f'Exception in {__name__}: invalid file name.')
         elif opt in ('-S', '--search'):
@@ -128,8 +128,7 @@ def main(argv):
     config = Config()
     ok, url = command_process(argv, config)
     if ok and url is not None:
-        config.command_url = url
-        tasker = Tasker(config)
+        tasker = Tasker(config, url)
         tasker.start_task()
     elif not ok:
         print('\nThere is no url provided.')

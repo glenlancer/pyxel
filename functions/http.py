@@ -83,7 +83,7 @@ class Http(Connection):
             if self.status_code not in (200, 206, 416):
                 return False
                 self.resuming_supported = False
-                self.file_size = sys.maxsize
+                self.file_size = self.MAX_FILESIZE
         else:
             self.file_size = max(self.file_size, self.get_size_from_length())
         return True

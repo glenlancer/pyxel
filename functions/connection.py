@@ -7,6 +7,7 @@ from .tcp import Tcp
 
 from .config import PYXEL_DEBUG
 
+# This class isn't used.
 class Downloader(object):
     def __init__(self):
         self.url = None
@@ -29,6 +30,8 @@ class Connection(object):
     ANONYMOUS_USER = 'anonymous'
     ANONYMOUS_PASS = 'mailto:anonymous@unkonwn.com'
 
+    MAX_FILESIZE = sys.maxsize
+
     def __init__(self, ai_family, io_timeout, max_redirect, local_ifs=None):
         self.ai_family = ai_family
         self.io_timeout = io_timeout
@@ -38,7 +41,6 @@ class Connection(object):
         self.request = None
         self.tcp = Tcp()
         self.status_code = None
-        self.file_size = None
         self.lock = None
         self.init_url_params()
         self.resuming_supported = True
@@ -57,7 +59,8 @@ class Connection(object):
         self.user = None
         self.password = None
         self.host = None
-        self.file_dir = None
+        self.filedir = None
+        self.filename = None
         self.file_size = None
         self.cgi_params = None
 
@@ -65,17 +68,17 @@ class Connection(object):
         parse_results = urlparse(url)
         scheme, port = self.parse_scheme(parse_results.scheme)
         user, password, host, new_port = self.parse_netloc(parse_results.netloc)
-        file_dir, file = self.parse_path(parse_results.path)
+        filedir, filename = self.parse_path(parse_results.path)
         if new_port is not None:
             port = new_port
         cgi_params = parse_results.query
-        return scheme, port, user, password, host, file_dir, file, cgi_params
+        return scheme, port, user, password, host, filedir, filename, cgi_params
 
     def set_url(self, url):
         self.init_url_params()
         self.url = url
         self.scheme, self.port, self.user, self.password, \
-        self.host, self.file_dir, self.file, self.cgi_params \
+        self.host, self.filedir, self.filename, self.cgi_params \
             = self.analyse_url(url)
         if PYXEL_DEBUG:
             sys.stderr.write('--- URL Parsing ---\n')
@@ -86,8 +89,8 @@ class Connection(object):
             sys.stderr.write(f'User: {self.user}\n')
             sys.stderr.write(f'Password: {self.password}\n')
             sys.stderr.write(f'Host: {self.host}\n')
-            sys.stderr.write(f'Dir: {self.file_dir}\n')
-            sys.stderr.write(f'File: {self.file}\n')
+            sys.stderr.write(f'Dir: {self.filedir}\n')
+            sys.stderr.write(f'File: {self.filename}\n')
             sys.stderr.write(f'Cgi: {self.cgi_params}\n')
             sys.stderr.write('--- End of Url Parsing ---\n')
 
@@ -152,7 +155,7 @@ class Connection(object):
                 full_url, self.user, ':', self.password, '@'
             ])
         full_url = ''.join([
-            full_url, self.host, ':', self.port, self.file_dir, self.file
+            full_url, self.host, ':', self.port, self.filedir, self.file
         ])
         if with_cgi_params:
             full_url = ''.join([full_url, '?', self.cgi_params])

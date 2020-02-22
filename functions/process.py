@@ -12,9 +12,9 @@ class Process(object):
     # 100 KB
     MIN_CHUNK_WORTH = 100 * 1024
 
-    def __init__(self, config):
+    def __init__(self, config, url):
         self.config = config
-        self.url = self.config.command_url
+        self.url = url
         self.messages = []
         self.output_filename = ''
         self.buffer_filename = ''
@@ -41,12 +41,14 @@ class Process(object):
                 self.config.headers,
                 self.config.http_proxy,
                 self.config.no_proxies,
+                self.config.interfaces[0]
             )]
         else:
             self.conns = [Ftp(
                 self.config.ai_family,
                 self.config.io_timeout,
                 self.config.max_redirect,
+                self.config.interfaces[0]
             )]
         conn[0].lock = threading.Lock()
 
@@ -63,15 +65,18 @@ class Process(object):
             self.delay_time['sec'] = delay // 1000000000
             self.delay_time['nsec'] = delay % 1000000000
 
-    def new_preparation(self, url):
-        self.prepare_connections()
-        self.conns[0].set_url(url)
-        # Setting local_if here?
-        self.conns[0].strip_cgi_parameters()
+    def set_output_filename(self):
         self.output_filename = unquote(self.conns[0].get_url_filename())
         if self.output_filename == '':
             # This happens when we download index page.
             self.output_filename = self.config.default_filename
+
+    def new_preparation(self, url):
+        self.prepare_connections()
+        self.conns[0].set_url(url):
+        self.conns[0].strip_cgi_parameters()
+        self.set_output_filename()
+
         if self.config.no_clobber and os.path.isfile(self.output_filename):
             if os.path.isfile(''.join([self.output_filename, '.st']))
                 print(f'Incomplete download found for {self.output_filename}, \
@@ -79,26 +84,20 @@ class Process(object):
             else:
                 print(f'File {self.output_filename} already exists, not retrieving.')
                 return False
-        # 
-        if not self.conns[0].get_resource_info():
-            return False
-        if self.config.verbose:
-            print('')
 
-    def divide(self):
-        '''
-        Divide the file and set locations for each connection.
-        '''
-        # Optimize the number of connections in case the file is small.
-        max_conns = max(1, self.file_size // self.MIN_CHUNK_WORTH)
-        if max_conns < self.config.num_of_connections:
-            self.config.num_of_connections = max_conns
-        # Calculate each segment's size
-        seg_len = self.file_size // self.config.num_of_connections
-        if seg_len == 0:
-            print('Too few bytes remaining, forcing a single connection\n')
-            self.config.num_of_connections = 1
-            seg_len = self.file_size
+        while True:
+            if not self.conns[0].get_resource_info():
+                return False
+            if self.conns[0].status_code != -1:
+                break
+            # FTP protocol can't be redirected back to HTTP.
+
+        self.file_size = self.conns[0].file_size
+        if self.config.verbose:
+            if self.file_size != Connection.MAX_FILESIZE:
+                self.add_message(f'File size: {self.file_size} bytes.')
+            else:
+                self.add_message('File size: unavailable.')
 
     def open_process(self, urls):
         if self.config.verbose:
@@ -118,8 +117,26 @@ class Process(object):
         else:
             fd = self.load_state()
 
+    def divide(self):
+        '''
+        Divide the file and set locations for each connection.
+        '''
+        # Optimize the number of connections in case the file is small.
+        max_conns = max(1, self.file_size // self.MIN_CHUNK_WORTH)
+        if max_conns < self.config.num_of_connections:
+            self.config.num_of_connections = max_conns
+        # Calculate each segment's size
+        seg_len = self.file_size // self.config.num_of_connections
+        if seg_len == 0:
+            print('Too few bytes remaining, forcing a single connection\n')
+            self.config.num_of_connections = 1
+            seg_len = self.file_size
+
     def add_message(self, message):
         self.messages.append(message)
+
+    def start(self):
+        
 
     def close(self):
         pass
@@ -172,4 +189,5 @@ class Process(object):
             assert(nwrite == len(last_byte))
         os.close(fd)
 
-    def print_messages()
+    def print_messages(self):
+        pass

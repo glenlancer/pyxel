@@ -17,9 +17,9 @@ class Search(object):
     __SPEED_DONE = -1
     __SPEED_PENDING = 0
 
-    def __init__(self, config):
+    def __init__(self, config, url):
         self.config = config
-        self.url = self.config.command_url
+        self.url = url
 
     def makelist(self, downloaders):
         beginning_time = time.time()

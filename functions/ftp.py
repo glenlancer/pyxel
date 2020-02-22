@@ -30,6 +30,11 @@ class Ftp(Connection):
     def is_data_connected(self):
         return self.data_tcp.is_connected()
 
+    def init_connection(self):
+        if self.url is None:
+            raise Exception(f'Exception in {__name__}: set_url() needs to be called first.')
+        return True
+
     def connect(self):
         if not self.tcp.connect(
             self.host,

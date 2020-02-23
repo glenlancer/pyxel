@@ -2,9 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import os
-import struct
 import threading
+import json
 from urllib.parse import unquote
+
+# Read this..
+# https://my.oschina.net/u/211101?tab=newest&catalogId=135429
 
 from .connection import Connection
 from .config import PYXEL_DEBUG
@@ -19,6 +22,7 @@ class Process(object):
         self.messages = []
         self.output_filename = ''
         self.buffer_filename = ''
+        self.output_fd = None
         self.file_size = 0
         self.bytes_done = 0
         self.conns = []
@@ -51,8 +55,6 @@ class Process(object):
                 self.config.max_redirect,
                 self.config.interfaces[0]
             )] * num_of_connections
-        for conn in self.conns:
-            conn.lock = threading.Lock()
 
     def tuning_params(self):
         if self.config.max_speed > 0:
@@ -101,32 +103,68 @@ class Process(object):
             else:
                 self.add_message('File size: unavailable.')
 
+    # map axel_open()
     def open_local_files(self, urls):
+        self.output_fd = None
         if self.config.verbose:
             self.add_message(f'Opening output file {self.output_filename}')
         self.buffer_filename = ''.join([self.output_filename, '.st'])
-
         # Check if server knows about RESTart and switch back to single connection
         # download if necessary.
-        fd = None
         if not self.conns[0].resuming_supported:
-            self.add_message(
-                'Server doen\'t support resuming, '
-                'starting from scratch with one connection.'
-            )
-            self.config.num_of_connections = 1
+            self.set_single_connection()
+        elif self.restore_state():
+            self.output_fd = self.open_file(self.output_filename, os.O_WRONLY)
+            if self.output_fd is None:
+                return False
+        if self.output_fd is None:
             self.divide()
-        else:
-            fd = self.load_state()
+            self.output_fd = self.open_file(self.output_filename, os.O_CREAT | O_WRONLY)
+            if self.output_fd is None:
+                return False
+            # Check whether the fs can handle seeks to past EOF areas.
+            self.check_seek_past_eof()
+        return True
+
+    def open_file(self, filename, mode):
+        try:
+            fd = os.open(self.output_filename, os.O_CREAT | O_WRONLY, 0o666)
+        except Exception as e:
+            self.add_message('Error opening local file. {}'.format(e.args[-1])
+            return None
+        return fd
+
+    def restore_state(self):
+        state = self.load_state()
+        if state:
+            self.num_of_connections = int(state['num_of_connections'])
+            self.bytes_done = int(state['bytes_done'])
+            assert self.num_of_connections == len(state['connections'])
+            self.prepare_connections(self.num_of_connections)
+            for i in range(self.conns):
+                self.conns[i].current_byte = state['connections'][i].current_byte
+                self.conns[i].last_byte = state['connections'][i].last_byte
+            return True
+        return False
+
+    def set_single_connection(self):
+        self.add_message(
+            'Server doen\'t support resuming, '
+            'starting from scratch with one connection.'
+        )
+        self.config.num_of_connections = 1
 
     def divide(self):
         '''
         Divide the file and set locations for each connection.
+        Set followings,
+        num_of_connections, current_byte, last_byte
         '''
         # Optimize the number of connections in case the file is small.
         max_conns = max(1, self.file_size // self.MIN_CHUNK_WORTH)
         if max_conns < self.config.num_of_connections:
             self.config.num_of_connections = max_conns
+        self.prepare_connections(self.num_of_connections)
         # Calculate each segment's size
         seg_len = self.file_size // self.config.num_of_connections
         if seg_len == 0:
@@ -158,51 +196,30 @@ class Process(object):
         pass
 
     def load_state(self):
-        try:
-            fd = os.open(self.buffer_filename, os.O_RDONLY)
-            file_size = os.lseek(fd, 0, os.SEEK_END)
-            os.lseek(fd, 0, os.SEEK_SET)
-            read_in_bytes = os.read(fd, struct.calcsize('I'))
-            if len(read_in_bytes) != struct.calcsize('I'):
-                print(f'{self.buffer_filename}: Error, truncated state file.')
-                os.close(fd)
-                return 0
-            self.config.num_of_connections = read_in_bytes.decode()
-            if self.config.num_of_connections < 1:
-                print('Bogus number of connections stored in state file.')
-                os.close(fd)
-                return 0
-        except Exception as e:
-            sys.stderr.write(f'Can\'t load file {self.buffer_filename}: {e.message}\n')
-            return -1
+        if os.path.exists(self.buffer_filename):
+            with open(self.buffer_filename, 'r') as file_obj:
+                return json.load(file_obj)
+        return None
 
     def save_state(self):
         # No use for .st file if the server doesn't support resuming.
         if not self.conn[0].resuming_supported:
             return
-        state_filename = ''.join([self.output_filename, '.st'])
-        try:
-            fd = os.open(
-                state_filename,
-                os.O_CREAT | os.O_TRUNC | os.O_WRONLY,
-                0o666)
-        except Exception as e:
-            sys.stderr.write(f'Can\'t open file {state_filename}: {e.message}\n')
-            return
-        num_of_connections = struct.pack('I', self.config.num_of_connections)
-        nwrite = os.write(fd, num_of_connections)
-        assert(nwrite == len(num_of_connections)
-        bytes_done = struct.pack('I', self.bytes_done)
-        nwrite = os.write(fd, bytes_done)
-        assert(nwrite == len(bytes_done))
+        assert len(self.conns) == self.config.num_of_connections
+        state = {
+            'num_of_connections': self.config.num_of_connections,
+            'bytes_done': self.bytes_done,
+            'connections': []
+        }
         for conn in self.conns:
-            current_byte = struct.pack('I', conn.current_byte)
-            nwrite = os.write(fd, current_byte)
-            assert(nwrite == len(current_byte))
-            last_byte = struct.pack('I', conn.last_byte)
-            nwrite = os.write(fd, last_byte)
-            assert(nwrite == len(last_byte))
-        os.close(fd)
+            state['connections'].append(
+                {
+                    'current_byte': conn.current_byte,
+                    'last_byte': conn.last_byte
+                }
+            )
+        with open(self.buffer_filename, 'w') as file_obj:
+            json.dump(state, file_obj)
 
     def print_messages(self):
         pass

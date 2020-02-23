@@ -41,7 +41,7 @@ class Connection(object):
         self.request = None
         self.tcp = Tcp()
         self.status_code = None
-        self.lock = None
+        self.lock = threading.Lock()
         self.init_url_params()
         self.resuming_supported = True
         self.first_byte = 0

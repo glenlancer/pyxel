@@ -21,5 +21,12 @@ class Tasker(object):
         if not self.process.new_preparation(url):
             self.process.print_messages()
             return False
+        if self.config.output_filename:
+        
+        else:
+            self.check_local_files()
+    
+    def check_local_files(self):
+        
         
         

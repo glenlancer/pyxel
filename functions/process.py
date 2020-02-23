@@ -7,6 +7,7 @@ import threading
 from urllib.parse import unquote
 
 from .connection import Connection
+from .config import PYXEL_DEBUG
 
 class Process(object):
     # 100 KB
@@ -31,7 +32,7 @@ class Process(object):
             print('Dump all stored messages.')
             print(message)
 
-    def prepare_connections(self):
+    def prepare_connections(self, num_of_connections=1):
         if Connection.get_scheme_from_url(self.url) in (Connection.HTTP, Connection.HTTPS):
             # Reminder, pass in local_ifs
             self.conns = [Http(
@@ -42,15 +43,16 @@ class Process(object):
                 self.config.http_proxy,
                 self.config.no_proxies,
                 self.config.interfaces[0]
-            )]
+            )] * num_of_connections
         else:
             self.conns = [Ftp(
                 self.config.ai_family,
                 self.config.io_timeout,
                 self.config.max_redirect,
                 self.config.interfaces[0]
-            )]
-        conn[0].lock = threading.Lock()
+            )] * num_of_connections
+        for conn in self.conns:
+            conn.lock = threading.Lock()
 
     def tuning_params(self):
         if self.config.max_speed > 0:
@@ -99,7 +101,7 @@ class Process(object):
             else:
                 self.add_message('File size: unavailable.')
 
-    def open_process(self, urls):
+    def open_local_files(self, urls):
         if self.config.verbose:
             self.add_message(f'Opening output file {self.output_filename}')
         self.buffer_filename = ''.join([self.output_filename, '.st'])
@@ -131,6 +133,20 @@ class Process(object):
             print('Too few bytes remaining, forcing a single connection\n')
             self.config.num_of_connections = 1
             seg_len = self.file_size
+            self.conns = [self.conns[0]]
+        for i in range(self.config.num_of_connections):
+            self.conns[i].current_byte = seg_len * i
+            self.conns[i].last_byte = seg_len * (i + 1)
+        # Last connection downloads remaining bytes
+        remaining_bytes = self.file_size % seg_len
+        self.conns[-1].last_byte += remaining_bytes
+        if PYXEL_DEBUG:
+            for i in range(self.config.num_of_connections):
+                print('Downloading {0}-{1} using conn. {2}'.format(
+                    self.conns[i].current_byte,
+                    self.conns[i].last_byte,
+                    i
+                ))
 
     def add_message(self, message):
         self.messages.append(message)
@@ -159,7 +175,6 @@ class Process(object):
         except Exception as e:
             sys.stderr.write(f'Can\'t load file {self.buffer_filename}: {e.message}\n')
             return -1
-       
 
     def save_state(self):
         # No use for .st file if the server doesn't support resuming.

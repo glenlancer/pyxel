@@ -11,7 +11,7 @@ class Tasker(object):
         self.config = config
         self.url = url
         self.search = Search(config, url)
-        self.process = Process(config, url)
+        self.process = Process(config)
 
     def start_task(self):
         print(f'Initializing download: {self.url}')

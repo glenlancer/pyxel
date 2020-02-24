@@ -4,6 +4,7 @@
 import os
 import threading
 import json
+import time
 from urllib.parse import unquote
 
 # Read this..
@@ -16,9 +17,9 @@ class Process(object):
     # 100 KB
     MIN_CHUNK_WORTH = 100 * 1024
 
-    def __init__(self, config, url):
+    def __init__(self, config):
         self.config = config
-        self.url = url
+        self.url = None
         self.messages = []
         self.output_filename = ''
         self.buffer_filename = ''
@@ -75,7 +76,9 @@ class Process(object):
             # This happens when we download index page.
             self.output_filename = self.config.default_filename
 
+    # map axel_new()
     def new_preparation(self, url):
+        self.url = url
         self.prepare_connections()
         self.conns[0].set_url(url):
         self.conns[0].strip_cgi_parameters()
@@ -125,6 +128,56 @@ class Process(object):
             # Check whether the fs can handle seeks to past EOF areas.
             self.check_seek_past_eof()
         return True
+
+    def check_seek_past_eof(self):
+        pass
+
+    def start(self):
+        target_url = self.conns[0].url
+        for conn in self.conns:
+            conn.set_url(target_url)
+        if self.config.verbose:
+            print('Starting download...')
+        for i in range(self.num_of_connections):
+            if self.conns[i].current_byte > self.conns[i].last_byte:
+                self.reactivate_connection(i)
+            elif: self.conns[i].current_byte < self.conns[i].last_byte:
+                if self.config.verbose:
+                    self.add_message(
+                        f'Connection {i} downloading from '
+                        f'{self.conns[i].host}:{self.conns[i].port} '
+                        f'using interface {self.conns[i].local_ifs}'
+                    )
+                self.conns[i].state = True
+                self.conns[i].setup_thread = threading.Thread(
+                    target=setup_connection_thread,
+                    args=(self.conns[i],)
+                )
+        self.start_time = time.time()
+        self.ready = True
+
+    def setup_connection_thread(self, conn):
+        pass
+
+    def reactivate_connection(self, index):
+        max_remaining = 0
+        max_index = None
+        if self.conns[index].enabled or self.conns[i].current_byte < self.conns[i].last_byte:
+            return
+        
+        for i in range(self.num_of_connections):
+            remaining = self.conns[i].last_byte - self.conns[i].current_byte
+            if remaining > max_remaining:
+                max_remaining = remaining
+                max_index = i
+        
+        # Do not reactivate unless large enough
+        if max_remaining > self.MIN_CHUNK_WORTH and max_index is not None:
+            if PYXEL_DEBUG:
+                print(f'Reactivate connection {index}')
+            self.conns[index].last_byte = self.conns[max_index].last_byte
+            self.conns[max_index].last_byte = self.conns[max_index].current_byte + max_remaining // 2
+            self.conns[index].current_byte = self.conns[max_index].last_byte
 
     def open_file(self, filename, mode):
         try:

@@ -47,6 +47,8 @@ class Connection(object):
         self.first_byte = 0
         self.current_byte = 0
         self.last_byte = 0
+        self.state = False
+        self.setup_thread = None
         self.message = None
 
     def is_connected(self):

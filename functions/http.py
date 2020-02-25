@@ -68,8 +68,8 @@ class Http(Connection):
             self.current_byte = 0
             if (not self.is_connected()) and (not self.init_connection()):
                 return False, 'connecting_failed'
-            self.send_get_request()
-            self.recv_get_response()
+            if not self.setup() or not self.execute():
+                return False, 'execute_failed'
             self.disconnect()
             self.set_filename_from_response()
             if self.status_code // 100 != 3:
@@ -92,12 +92,21 @@ class Http(Connection):
             return True, 'ok'
         return False, 'no_file_size'
 
-    def send_get_request(self):
+    def setup(self):
+        if not self.is_connected():
+            if not self.init_connection()
+                return False
         self.first_byte = -1
         if self.resuming_supported:
             self.first_byte = self.current_byte
         self.build_basic_get()
         self.http_additional_headers()
+        return True
+
+    def execute(self):
+        return self.send_get_request() and self.recv_get_response()
+
+    def send_get_request(self):
         if PYXEL_DEBUG:
             sys.stderr.write('--- Sending request ---\n')
             sys.stderr.write(self.request)

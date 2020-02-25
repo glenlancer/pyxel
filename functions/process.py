@@ -5,6 +5,7 @@ import os
 import threading
 import json
 import time
+import ctypes
 from urllib.parse import unquote
 
 # Read this..
@@ -22,7 +23,7 @@ class Process(object):
         self.url = None
         self.messages = []
         self.output_filename = ''
-        self.buffer_filename = ''
+        self.state_filename = ''
         self.output_fd = None
         self.file_size = 0
         self.bytes_done = 0
@@ -30,6 +31,7 @@ class Process(object):
         self.delay_time = {
             'sec': 0, 'nsec': 0
         }
+        self.next_state = 0
         self.tuning_params()
 
     def __del__(self):
@@ -111,7 +113,7 @@ class Process(object):
         self.output_fd = None
         if self.config.verbose:
             self.add_message(f'Opening output file {self.output_filename}')
-        self.buffer_filename = ''.join([self.output_filename, '.st'])
+        self.state_filename = ''.join([self.output_filename, '.st'])
         # Check if server knows about RESTart and switch back to single connection
         # download if necessary.
         if not self.conns[0].resuming_supported:
@@ -156,8 +158,36 @@ class Process(object):
         self.start_time = time.time()
         self.ready = True
 
-    def setup_connection_thread(self, conn):
-        pass
+    def __cancel_thread(self, thread_id):
+        if not isinstance(thread_id, ctypes.c_long):
+            thread_id = ctypes.c_long(thread_id)
+        res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
+            thread_id,
+            ctypes.py_object(SystemExit)
+        )
+        if res == 0:
+            raise ValueError('Invalid thread id')
+        if res > 1:
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                thread_id,
+                None
+            )
+            print('Exception raise within thread failed')
+
+    def setup_connection_thread(conn):
+        conn.lock.acquire()
+        #if conn.get_resource_info()
+        if conn.setup():
+            conn.last_transfer = time.time()
+            if conn.execute():
+                conn.last_transfer = time.time()
+                conn.enabled = True
+            else:
+                conn.disconnect()
+        else:
+            conn.disconnect()
+        conn.state = False
+        conn.lock.release()
 
     def reactivate_connection(self, index):
         max_remaining = 0
@@ -242,15 +272,22 @@ class Process(object):
     def add_message(self, message):
         self.messages.append(message)
 
-    def start(self):
+    def main_loop(self):
         
+        current_time = time.time()
+        if current_time > self.next_state:
+            self.save_state()
+            self.next_state = current_time + self.config.save_state_interval
+
+    def start(self):
+        pass
 
     def close(self):
         pass
 
     def load_state(self):
-        if os.path.exists(self.buffer_filename):
-            with open(self.buffer_filename, 'r') as file_obj:
+        if os.path.exists(self.state_filename):
+            with open(self.state_filename, 'r') as file_obj:
                 return json.load(file_obj)
         return None
 
@@ -271,7 +308,7 @@ class Process(object):
                     'last_byte': conn.last_byte
                 }
             )
-        with open(self.buffer_filename, 'w') as file_obj:
+        with open(self.state_filename, 'w') as file_obj:
             json.dump(state, file_obj)
 
     def print_messages(self):

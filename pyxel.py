@@ -73,7 +73,7 @@ def command_process(argv, config):
             config.max_redirect = int(arg)
         elif opt in ('-o', '--output'):
             if is_filename_valid(arg):
-                config.output_filename = arg
+                config.output_direction = arg
             else:
                 raise Exception(f'Exception in {__name__}: invalid file name.')
         elif opt in ('-S', '--search'):

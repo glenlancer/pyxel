@@ -11,7 +11,7 @@ class Config(object):
 
     def __init__(self):
         self.default_filename = 'pyxel_gathering'
-        self.output_filename = None
+        self.output_direction = None
         self.http_proxy = None
         self.no_proxies = []
         self.strip_cgi_parameters = 1

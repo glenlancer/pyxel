@@ -23,6 +23,9 @@ class Tasker(object):
         if self.config.do_search:
             # Do nothing..
             print('do_search is not supported yet.')
+        self.start_download_task()
+
+    def start_download_task(self):
         if not self.process.new_preparation(url):
             self.process.print_messages()
             return False

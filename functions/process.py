@@ -213,7 +213,7 @@ class Process(object):
         try:
             fd = os.open(self.output_filename, os.O_CREAT | O_WRONLY, 0o666)
         except Exception as e:
-            self.add_message('Error opening local file. {}'.format(e.args[-1])
+            self.add_message('Error opening local file. {}'.format(e.args[-1]))
             return None
         return fd
 
@@ -273,11 +273,15 @@ class Process(object):
         self.messages.append(message)
 
     def main_loop(self):
-        
+        delay_time = {
+            'sec': 0, 'nsec': 100000000
+        }
         current_time = time.time()
         if current_time > self.next_state:
             self.save_state()
             self.next_state = current_time + self.config.save_state_interval
+        
+
 
     def start(self):
         pass

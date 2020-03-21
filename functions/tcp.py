@@ -4,6 +4,7 @@
 # HowTo
 # https://docs.python.org/3.8/howto/sockets.html#socket-howto
 
+import ssl
 import socket
 import struct
 
@@ -28,7 +29,7 @@ class Tcp(object):
             Tcp.print_error(host, port, e.message)
             return False
         for gai_result in gai_results:
-            t_ai_family, ai_sockettype, ai_protocol, _, ai_addr = gai_result
+            t_ai_family, ai_sockettype, ai_protocol, _, (ai_host, ai_port) = gai_result
             try:
                 self.close()
                 self.socket_ref = socket.socket(
@@ -36,13 +37,19 @@ class Tcp(object):
                     ai_sockettype,
                     ai_protocol
                 )
+                if is_secure:
+                    context = ssl.SSLContext()
+                    self.socket_ref = context.wrap_socket(
+                        self.socket_ref, server_hostname=ai_host
+                    )
                 self.socket_ref.setblocking(0)
                 self.socket_ref.settimeout(io_timeout)
                 # Does this mean the port number is dynamic allocated?
-                if local_if is not None and t_ai_family == socket.AF_INET:
+                # Do we need to do this: if local_if is not None and t_ai_family == socket.AF_INET:
+                if local_if is not None:
                     self.socket_ref.bind((local_if, 0))
                 self.socket_ref.setsockopt(socket.IPPROTO_TCP, socket.TCP_FASTOPEN, 1)
-                self.socket_ref.connect(ai_addr)
+                self.socket_ref.connect((ai_host, ai_port))
             except socket.error as e:
                 Tcp.print_error(host, port, e.message)
                 self.socket_ref = None

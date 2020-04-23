@@ -1,20 +1,13 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-import sys, re
+import sys
+import re
+import threading
 from urllib.parse import urlparse
 from .tcp import Tcp
 
 from .config import PYXEL_DEBUG
-
-# This class isn't used.
-class Downloader(object):
-    def __init__(self):
-        self.url = None
-        self.speed_start_time = 0
-        self.speed = 0
-        self.file_size = 0
-        self.speed_thread = None
 
 class Connection(object):
     FTP_DEFAULT_PORT = 21
@@ -43,7 +36,6 @@ class Connection(object):
         self.status_code = None
         self.lock = threading.Lock()
         self.init_url_params()
-        self.resuming_supported = True
         self.first_byte = 0
         self.current_byte = 0
         self.last_byte = 0

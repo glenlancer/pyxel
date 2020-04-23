@@ -12,6 +12,8 @@ from urllib.parse import unquote
 # https://my.oschina.net/u/211101?tab=newest&catalogId=135429
 
 from .connection import Connection
+from .http import Http
+from .ftp import Ftp
 from .config import PYXEL_DEBUG
 
 class Process(object):
@@ -31,13 +33,15 @@ class Process(object):
         self.delay_time = {
             'sec': 0, 'nsec': 0
         }
-        self.next_state = 0
         self.tuning_params()
+        self.next_state = 0
+        self.ready = False
 
     def __del__(self):
-        for message in self.messages:
-            print('Dump all stored messages.')
-            print(message)
+        if self.messages:
+            print(f'Dump all stored messages for {__name__}')
+            for message in self.messages:
+                print(message)
 
     def prepare_connections(self, num_of_connections=1):
         if Connection.get_scheme_from_url(self.url) in (Connection.HTTP, Connection.HTTPS):
@@ -45,7 +49,7 @@ class Process(object):
             self.conns = [Http(
                 self.config.ai_family,
                 self.config.io_timeout,
-                self.config.max_redirect
+                self.config.max_redirect,
                 self.config.headers,
                 self.config.http_proxy,
                 self.config.no_proxies,
@@ -61,38 +65,44 @@ class Process(object):
 
     def tuning_params(self):
         if self.config.max_speed > 0:
+            # To make max_speed / buffer_size < 0.5
             if self.config.max_speed * 16 // self.config.buffer_size < 8:
                 if self.config.verbose:
                     self.add_message('Buffer resized for this speed.')
                 self.config.buffer_size = self.config.max_speed
             delay = 1000000000 * \
                 self.config.buffer_size * \
-                self.config.num_of_connections / \
+                self.config.num_of_connections // \
                 self.config.max_speed
             self.delay_time['sec'] = delay // 1000000000
             self.delay_time['nsec'] = delay % 1000000000
 
     def set_output_filename(self):
-        self.output_filename = unquote(self.conns[0].get_url_filename())
+        self.output_filename = unquote(self.conns[0].filename)
         if self.output_filename == '':
             # This happens when we download index page.
             self.output_filename = self.config.default_filename
 
-    # map axel_new()
-    def new_preparation(self, url):
-        self.url = url
-        self.prepare_connections()
-        self.conns[0].set_url(url):
-        self.conns[0].strip_cgi_parameters()
-        self.set_output_filename()
-
+    def clobber_existing_file(self):
         if self.config.no_clobber and os.path.isfile(self.output_filename):
-            if os.path.isfile(''.join([self.output_filename, '.st']))
+            if os.path.isfile(''.join([self.output_filename, '.st'])):
                 print(f'Incomplete download found for {self.output_filename}, \
                     ignoring no-clobber option.\n')
             else:
-                print(f'File {self.output_filename} already exists, not retrieving.')
+                print(f'File {self.output_filename} already exists, not downloading.')
+                self.ready = False
                 return False
+        return True
+
+    # map axel_new()
+    def new_preparation(self, url):
+        self.url = url
+        self.prepare_connections(self.config.num_of_connections)
+        self.conns[0].set_url(url)
+
+        self.set_output_filename()
+        if not self.clobber_existing_file():
+            return False
 
         while True:
             if not self.conns[0].get_resource_info():
@@ -143,7 +153,7 @@ class Process(object):
         for i in range(self.num_of_connections):
             if self.conns[i].current_byte > self.conns[i].last_byte:
                 self.reactivate_connection(i)
-            elif: self.conns[i].current_byte < self.conns[i].last_byte:
+            elif self.conns[i].current_byte < self.conns[i].last_byte:
                 if self.config.verbose:
                     self.add_message(
                         f'Connection {i} downloading from '
@@ -280,8 +290,6 @@ class Process(object):
         if current_time > self.next_state:
             self.save_state()
             self.next_state = current_time + self.config.save_state_interval
-        
-
 
     def start(self):
         pass
@@ -314,6 +322,3 @@ class Process(object):
             )
         with open(self.state_filename, 'w') as file_obj:
             json.dump(state, file_obj)
-
-    def print_messages(self):
-        pass

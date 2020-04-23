@@ -7,6 +7,7 @@
 import ssl
 import socket
 import struct
+import psutil
 
 class Tcp(object):
     def __init__(self):
@@ -46,8 +47,10 @@ class Tcp(object):
                 self.socket_ref.settimeout(io_timeout)
                 # Does this mean the port number is dynamic allocated?
                 # Do we need to do this: if local_if is not None and t_ai_family == socket.AF_INET:
-                if local_if is not None:
-                    self.socket_ref.bind((local_if, 0))
+                if local_if:
+                    local_addr = self.get_if_ip(local_if, t_ai_family)
+                    if local_addr:
+                        self.socket_ref.bind((local_addr, 0))
                 self.socket_ref.setsockopt(socket.IPPROTO_TCP, socket.TCP_FASTOPEN, 1)
                 self.socket_ref.connect((ai_host, ai_port))
             except socket.error as e:
@@ -66,7 +69,6 @@ class Tcp(object):
 
     def close(self):
         if self.socket_ref is not None:
-            self.socket_ref.shutdown(2)
             self.socket_ref.close()
             self.socket_ref = None
 
@@ -107,3 +109,12 @@ class Tcp(object):
         except socket.error:
             return False
         return True
+
+    @staticmethod
+    def get_if_ip(local_if, ai_family):
+        if_addrs = psutil.net_if_addrs()
+        if local_if in if_addrs:
+            for item in if_addrs[local_if]:
+                if isinstance(item, psutil._common.snic) and item.family == ai_family:
+                    return item.address
+        return None

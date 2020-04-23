@@ -14,6 +14,8 @@ def is_filename_valid(file_name):
 
 def print_version():
     print('Pyxel version 1.0')
+    print('Author: Glen Lin')
+    print('Email: glenlancer@163.com')
 
 def print_help():
     print('Usage: pyxel [options] url1 [url2] [url...]')
@@ -22,7 +24,6 @@ def print_help():
     print('--num-connections=x\t-n x\tSpecify maximum number of connections')
     print('--max-redirect=x\t\tSpecify maximum number of redirections')
     print('--output=f\t\t-o f\tSpecify local output file')
-    print('--search=n\t\t-S n\tSearch for mirrors and download from n servers')
     print('--ipv4\t\t\t-4\tUse the IPv4 protocol')
     print('--ipv6\t\t\t-6\tUse the IPv6 protocol')
     print('--header=x\t\t\t-H x\tAdd HTTP header string')
@@ -40,7 +41,7 @@ def print_help():
 def command_process(argv, config):
     try:
         opts, args = getopt.getopt(
-            argv, 'hvs:n:o:S:46H:U:NkcqVaT:',
+            argv, 'hvs:n:o:46H:U:NkcqVaT:',
             [
                 'help',
                 'version',
@@ -48,7 +49,6 @@ def command_process(argv, config):
                 'num-connections=',
                 'max-redirect=',
                 'output=',
-                'search=',
                 'ipv4',
                 'ipv6',
                 'header=',
@@ -76,9 +76,6 @@ def command_process(argv, config):
                 config.output_direction = arg
             else:
                 raise Exception(f'Exception in {__name__}: invalid file name.')
-        elif opt in ('-S', '--search'):
-            config.do_search = True
-            config.search_top = int(arg)
         elif opt in ('-4', '--ipv4'):
             config.set_protocol('ipv4')
         elif opt in ('-6', '--ipv6'):

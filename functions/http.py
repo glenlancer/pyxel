@@ -20,8 +20,10 @@ class Http(Connection):
         self.http_basic_auth = None
         self.request = None
         self.response = None
+        self.resuming_supported = True
 
     def check_if_no_proxy(self):
+        ''' If the target hostname is in no_procies list, then don\'t use proxy. '''
         for no_proxy in self.no_proxies:
             if self.hostname == no_proxy:
                 self.http_proxy = None
@@ -32,7 +34,8 @@ class Http(Connection):
         port = self.port
         user = self.user
         password = self.password
-        if self.http_proxy is not None:
+        if self.http_proxy:
+            # Need to check how http_proxy actually works later.
             _, port, user, password, \
             host, _, _, _ \
                 = self.analyse_url(self.http_proxy)
@@ -52,7 +55,7 @@ class Http(Connection):
     def disconnect(self):
         self.tcp.close()
 
-    def init_connection(self):
+    def init(self):
         if self.url is None:
             raise Exception(f'Exception in {__name__}: set_url() needs to be called first.')
         self.check_if_no_proxy()
@@ -61,13 +64,22 @@ class Http(Connection):
             return False
         return True
 
+    def setup(self):
+        if not self.is_connected():
+            if not self.init():
+                return False
+        self.first_byte = -1
+        if self.resuming_supported:
+            self.first_byte = self.current_byte
+        self.build_basic_get()
+        self.http_additional_headers()
+        return True
+
     def get_resource_info(self):
         redirect_count = 0
         while True:
             self.resuming_supported = True
             self.current_byte = 0
-            if (not self.is_connected()) and (not self.init_connection()):
-                return False, 'connecting_failed'
             if not self.setup() or not self.execute():
                 return False, 'execute_failed'
             self.disconnect()
@@ -91,17 +103,6 @@ class Http(Connection):
         if self.set_filesize():
             return True, 'ok'
         return False, 'no_file_size'
-
-    def setup(self):
-        if not self.is_connected():
-            if not self.init_connection()
-                return False
-        self.first_byte = -1
-        if self.resuming_supported:
-            self.first_byte = self.current_byte
-        self.build_basic_get()
-        self.http_additional_headers()
-        return True
 
     def execute(self):
         return self.send_get_request() and self.recv_get_response()
@@ -171,7 +172,7 @@ class Http(Connection):
 
     def add_request_head(self):
         if self.http_proxy is None:
-            self.add_header(f'GET %s%s HTTP/1.0' % (self.file_dir, self.file))
+            self.add_header(f'GET %s%s HTTP/1.0' % (self.filedir, self.filename))
             if self.is_default_port(self.scheme, self.port):
                 self.add_header(f'Host: %s' % (self.host))
             else:
@@ -179,9 +180,9 @@ class Http(Connection):
         else:
             proto_str = self.get_scheme(self.scheme)
             if self.is_default_port(self.port):
-                get_str = ''.join([proto_str, self.host, self.file_dir, self.file])
+                get_str = ''.join([proto_str, self.host, self.filedir, self.filename])
             else:
-                get_str = ''.joing([proto_str, self.host, self.file_dir, self.file])
+                get_str = ''.joing([proto_str, self.host, self.filedir, self.filename])
             self.add_header('GET %s HTTP/1.0' % (get_str))
 
     def http_additional_headers(self):

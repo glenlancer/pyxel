@@ -27,16 +27,10 @@ class Config(object):
         self.alternate_output = False
         self.insecure = False
         self.no_clobber = False
-        self.do_search = False
-        self.search_timeout = 10
-        self.search_threads = 3
-        # Number of URL's to request from filesearching.com
-        self.search_amount = 15
-        self.search_top = 3
         self.ai_family = Config.AF_UNSPEC
         self.headers = {}
         self.set_header('User-Agent', self.__DEFAULT_USER_AGENT)
-        self.interfaces = ['wlp1s0']
+        self.interfaces = ['wlo1']
         self.standard_output = None
 
     def set_header(self, key, value):

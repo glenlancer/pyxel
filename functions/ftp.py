@@ -96,7 +96,7 @@ class Ftp(Connection):
 
     def cwd(self, cwd):
         self.send_command(f'CWD {cwd}')
-        if self.is_wait_nok(2)::
+        if self.is_wait_nok(2):
             sys.stderr.write(f'Can\'t change directory to {cwd}\n')
             return False
         self.cwd = cwd
@@ -158,7 +158,7 @@ class Ftp(Connection):
             except RuntimeError as r:
                 sys.stderr.write(f'{r.message}\n')
                 return ''
-            if recv_char == '\n'
+            if recv_char == '\n':
                 self.ftp_replies.append(line)
                 break
             else:

@@ -5,29 +5,18 @@ import os
 import sys
 import signal
 
-from .search import Search
 from .process import Process
-
-# python3 pyxel.py --search=2 http://file.allitebooks.com/20200215/Serverless%20Programming%20Cookbook.pdf
 
 class Tasker(object):
     def __init__(self, config, url):
         self.config = config
         self.url = url
-        self.search = Search(config, url)
         self.process = Process(config)
         self.run = False
 
     def start_task(self):
         print(f'Initializing download: {self.url}')
-        if self.config.do_search:
-            # Do nothing..
-            print('do_search is not supported yet.')
-        self.start_download_task()
-
-    def start_download_task(self):
-        if not self.process.new_preparation(url):
-            self.process.print_messages()
+        if not self.process.new_preparation(self.url):
             return False
         if self.config.output_direction:
             if not self.use_output_direction():

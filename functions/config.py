@@ -3,6 +3,11 @@ import socket
 
 PYXEL_DEBUG = True
 
+def is_filename_valid(file_name):
+    ''' check if given filename is valid '''
+    chars = '^[\-_\.a-zA-Z0-9]*$'
+    return re.match(chars, file_name)
+
 class Config(object):
     __MAX_REDIRECT = 20
     __DEFAULT_IO_TIMEOUT = 120

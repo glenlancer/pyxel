@@ -43,25 +43,34 @@ class Process(object):
             for message in self.messages:
                 print(message)
 
-    def prepare_connections(self, num_of_connections=1):
-        if Connection.get_scheme_from_url(self.url) in (Connection.HTTP, Connection.HTTPS):
-            # Reminder, pass in local_ifs
-            self.conns = [Http(
-                self.config.ai_family,
-                self.config.io_timeout,
-                self.config.max_redirect,
-                self.config.headers,
-                self.config.http_proxy,
-                self.config.no_proxies,
-                self.config.interfaces[0]
-            )] * num_of_connections
-        else:
-            self.conns = [Ftp(
-                self.config.ai_family,
-                self.config.io_timeout,
-                self.config.max_redirect,
-                self.config.interfaces[0]
-            )] * num_of_connections
+    def prepare_connections(self, num_of_connections):
+        for _ in range(num_of_connections):
+            if Connection.get_scheme_from_url(self.url) in (Connection.HTTP, Connection.HTTPS):
+                new_conn = Http(
+                    self.config.ai_family,
+                    self.config.io_timeout,
+                    self.config.max_redirect,
+                    self.config.headers,
+                    self.config.http_proxy,
+                    self.config.no_proxies,
+                    self.config.interfaces[0]
+                )
+            else:
+                new_conn = Ftp(
+                    self.config.ai_family,
+                    self.config.io_timeout,
+                    self.config.max_redirect,
+                    self.config.interfaces[0]
+                )
+        self.conns.append(new_conn)
+
+    def prepare_1st_connection(self):
+        self.conns = []
+        self.prepare_connections(1)
+
+    def prepare_other_connections(self):
+        assert len(self.conns) == 1
+        self.prepare_other_connections(self.num_of_connections - 1)
 
     def tuning_params(self):
         if self.config.max_speed > 0:
@@ -96,10 +105,15 @@ class Process(object):
 
     # map axel_new()
     def new_preparation(self, url):
+        '''
+        Get resource information by sending a GET request to the target URL
+        and analysing the response.
+        '''
         self.url = url
-        self.prepare_connections(self.config.num_of_connections)
+        self.prepare_1st_connection()
         self.conns[0].set_url(url)
 
+        # Set output filename using the filename in the URL.
         self.set_output_filename()
         if not self.clobber_existing_file():
             return False
@@ -107,10 +121,27 @@ class Process(object):
         while True:
             if not self.conns[0].get_resource_info():
                 return False
-            if self.conns[0].status_code != -1:
+            if not self.conns[0].redirect_to_ftp:
                 break
-            # FTP protocol can't be redirected back to HTTP.
+            # This is for redirection from HTTP to FTP,
+            # which could only happen once, as FTP can't
+            # be redirected back to HTTP.
+            # Hanle HTTP redirects to FTP here...
+            pass
 
+        # Always use the filename we got from HTTP response, if there is one.
+        if self.conns[0].output_filename:
+            self.output_filename = self.conns[0].output_filename
+
+        if PYXEL_DEBUG:
+            print(f'Before calling {__name__}, the url was {self.url}')
+        # Reset url after getting the HTTP response, as it might be redirected.
+        self.conns[0].url = self.conns[0].generate_url()
+        self.url = self.conns[0].url
+        if PYXEL_DEBUG:
+            print(f'After calling {__name__}, the url is {self.url}')
+
+        # Set file size from HTTP response.
         self.file_size = self.conns[0].file_size
         if self.config.verbose:
             if self.file_size != Connection.MAX_FILESIZE:
@@ -120,25 +151,28 @@ class Process(object):
 
     # map axel_open()
     def open_local_files(self, urls):
+        ''' Open a local file to store the downloaded data. '''
         self.output_fd = None
         if self.config.verbose:
             self.add_message(f'Opening output file {self.output_filename}')
         self.state_filename = ''.join([self.output_filename, '.st'])
+
         # Check if server knows about RESTart and switch back to single connection
         # download if necessary.
-        if not self.conns[0].resuming_supported:
-            self.set_single_connection()
-        elif self.restore_state():
+        if self.restore_state():
             self.output_fd = self.open_file(self.output_filename, os.O_WRONLY)
             if self.output_fd is None:
                 return False
-        if self.output_fd is None:
+        else:
+            if not self.conns[0].resuming_supported:
+                self.set_single_connection()
             self.divide()
-            self.output_fd = self.open_file(self.output_filename, os.O_CREAT | O_WRONLY)
+            self.output_fd = self.open_file(self.output_filename, os.O_CREAT | os.O_WRONLY)
             if self.output_fd is None:
                 return False
-            # Check whether the fs can handle seeks to past EOF areas.
-            self.check_seek_past_eof()
+            if self.num_of_connections > 1:
+                # Check whether the fs can handle seeks to past EOF areas.
+                self.check_seek_past_eof()
         return True
 
     def check_seek_past_eof(self):
@@ -221,22 +255,24 @@ class Process(object):
 
     def open_file(self, filename, mode):
         try:
-            fd = os.open(self.output_filename, os.O_CREAT | O_WRONLY, 0o666)
+            return os.open(self.output_filename, mode, 0o666)
         except Exception as e:
             self.add_message('Error opening local file. {}'.format(e.args[-1]))
             return None
-        return fd
 
     def restore_state(self):
         state = self.load_state()
         if state:
             self.num_of_connections = int(state['num_of_connections'])
             self.bytes_done = int(state['bytes_done'])
-            assert self.num_of_connections == len(state['connections'])
-            self.prepare_connections(self.num_of_connections)
-            for i in range(self.conns):
+            assert self.num_of_connections > 0
+            self.prepare_other_connections()
+            for i in range(self.num_of_connections):
                 self.conns[i].current_byte = state['connections'][i].current_byte
                 self.conns[i].last_byte = state['connections'][i].last_byte
+            self.add_message(
+                f'State file found: {self.bytes_done} bytes downloaded, {self.file_size - self.bytes_done} to go.'
+            )
             return True
         return False
 
@@ -247,17 +283,21 @@ class Process(object):
         )
         self.config.num_of_connections = 1
 
+    def optimize_num_of_connections(self):
+        ''' Optimize the number of connections in case the file is small. '''
+        max_conns = max(1, self.file_size // self.MIN_CHUNK_WORTH)
+        if max_conns < self.config.num_of_connections:
+            self.config.num_of_connections = max_conns
+
     def divide(self):
         '''
         Divide the file and set locations for each connection.
         Set followings,
         num_of_connections, current_byte, last_byte
         '''
-        # Optimize the number of connections in case the file is small.
-        max_conns = max(1, self.file_size // self.MIN_CHUNK_WORTH)
-        if max_conns < self.config.num_of_connections:
-            self.config.num_of_connections = max_conns
-        self.prepare_connections(self.num_of_connections)
+        self.optimize_num_of_connections()
+        self.prepare_other_connections()
+
         # Calculate each segment's size
         seg_len = self.file_size // self.config.num_of_connections
         if seg_len == 0:
@@ -265,15 +305,19 @@ class Process(object):
             self.config.num_of_connections = 1
             seg_len = self.file_size
             self.conns = [self.conns[0]]
+
         for i in range(self.config.num_of_connections):
             self.conns[i].current_byte = seg_len * i
             self.conns[i].last_byte = seg_len * (i + 1)
+
         # Last connection downloads remaining bytes
         remaining_bytes = self.file_size % seg_len
-        self.conns[-1].last_byte += remaining_bytes
+        if remaining_bytes:
+            self.conns[-1].last_byte += remaining_bytes
+
         if PYXEL_DEBUG:
             for i in range(self.config.num_of_connections):
-                print('Downloading {0}-{1} using conn. {2}'.format(
+                print('Downloading {0}-{1} using conn: \{{2}\}'.format(
                     self.conns[i].current_byte,
                     self.conns[i].last_byte,
                     i

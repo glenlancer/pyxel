@@ -43,6 +43,7 @@ class Connection(object):
         self.state = False
         self.setup_thread = None
         self.message = None
+        self.redirect_to_ftp = False
 
     def is_connected(self):
         return self.tcp.is_connected()

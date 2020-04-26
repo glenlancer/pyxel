@@ -5,12 +5,8 @@ import sys, os
 import getopt
 import re
 from functions.config import Config
+from functions.config import is_filename_valid
 from functions.tasker import Tasker
-
-def is_filename_valid(file_name):
-    ''' check if given filename is valid '''
-    chars = '^[\-_\.a-zA-Z0-9]*$'
-    return re.match(chars, file_name)
 
 def print_version():
     print('Pyxel version 1.0')

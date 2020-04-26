@@ -76,35 +76,39 @@ class Http(Connection):
         return True
 
     def get_resource_info(self):
+        self.redirect_to_ftp = False
         redirect_count = 0
         while True:
             self.resuming_supported = True
             self.current_byte = 0
-            if not self.setup() or not self.execute():
-                return False, 'execute_failed'
+            if not self.setup() or not self.execute_req_resp():
+                return False
             self.disconnect()
             self.set_filename_from_response()
+            # Code 3xx == redirect.
             if self.status_code // 100 != 3:
                 break
             # Following code needs to be tested thoroughly.
             redirect_count += 1
             if redirect_count > self.max_redirect:
                 sys.stderr.write('Too many redirects.\n')
-                return False, 'too_many_redirects'
+                return False
             redirect_url = self.get_redirect_url_from_response()
             if redirect_url is None:
                 return False
             self.set_url(redirect_url)
+            # Redirect to Ftp.
             if self.get_scheme_from_url(redirect_url) in (self.FTP, self.FTPS):
-                return True, 'redirect_to_ftp'
+                self.redirect_to_ftp = True
+                return True
         # Check for non-recoverable errors.
         if self.status_code != 416 and self.status_code // 100 != 2:
-            return False, 'unrecoverable_errors'
+            return False
         if self.set_filesize():
-            return True, 'ok'
-        return False, 'no_file_size'
+            return True
+        return False
 
-    def execute(self):
+    def execute_req_resp(self):
         return self.send_get_request() and self.recv_get_response()
 
     def send_get_request(self):

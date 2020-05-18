@@ -70,7 +70,10 @@ class Process(object):
 
     def prepare_other_connections(self):
         assert len(self.conns) == 1
-        self.prepare_other_connections(self.num_of_connections - 1)
+        self.prepare_connections(self.num_of_connections - 1)
+
+    def is_resuming_supported(self):
+        return self.conns[0].resuming_supported
 
     def tuning_params(self):
         if self.config.max_speed > 0:
@@ -218,6 +221,7 @@ class Process(object):
             )
             print('Exception raise within thread failed')
 
+    @staticmethod
     def setup_connection_thread(conn):
         conn.lock.acquire()
         #if conn.get_resource_info()
@@ -233,10 +237,10 @@ class Process(object):
         conn.state = False
         conn.lock.release()
 
-    def reactivate_connection(self, index):
+    def reactivate_connection(self, i):
         max_remaining = 0
         max_index = None
-        if self.conns[index].enabled or self.conns[i].current_byte < self.conns[i].last_byte:
+        if self.conns[i].enabled or self.conns[i].current_byte < self.conns[i].last_byte:
             return
         
         for i in range(self.num_of_connections):
@@ -248,10 +252,10 @@ class Process(object):
         # Do not reactivate unless large enough
         if max_remaining > self.MIN_CHUNK_WORTH and max_index is not None:
             if PYXEL_DEBUG:
-                print(f'Reactivate connection {index}')
-            self.conns[index].last_byte = self.conns[max_index].last_byte
+                print(f'Reactivate connection {i}')
+            self.conns[i].last_byte = self.conns[max_index].last_byte
             self.conns[max_index].last_byte = self.conns[max_index].current_byte + max_remaining // 2
-            self.conns[index].current_byte = self.conns[max_index].last_byte
+            self.conns[i].current_byte = self.conns[max_index].last_byte
 
     def open_file(self, filename, mode):
         try:
@@ -326,6 +330,21 @@ class Process(object):
     def add_message(self, message):
         self.messages.append(message)
 
+    def connections_check(self):
+        for i, conn in enumerate(self.conns):
+            if not conn.lock.acquire(blocking=False):
+                continue
+            if not conn.enabled and conn.current_byte < conn.last_byte:
+                if not conn.state:
+                    # Wait for termination of this thread
+                    conn.setup_thread.join()
+
+                    if self.config.verbose:
+                        self.add_message('Connection {0} downloading from {1}:{2} using interface {3}'
+                            .format(i, conn.host, conn.port, conn.local_ifs))
+                    conn.state = True
+                    
+
     def main_loop(self):
         delay_time = {
             'sec': 0, 'nsec': 100000000
@@ -335,12 +354,6 @@ class Process(object):
             self.save_state()
             self.next_state = current_time + self.config.save_state_interval
 
-    def start(self):
-        pass
-
-    def close(self):
-        pass
-
     def load_state(self):
         if os.path.exists(self.state_filename):
             with open(self.state_filename, 'r') as file_obj:
@@ -349,7 +362,7 @@ class Process(object):
 
     def save_state(self):
         # No use for .st file if the server doesn't support resuming.
-        if not self.conn[0].resuming_supported:
+        if not self.conns[0].resuming_supported:
             return
         assert len(self.conns) == self.config.num_of_connections
         state = {

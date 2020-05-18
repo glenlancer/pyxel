@@ -10,6 +10,9 @@ from .tcp import Tcp
 from .config import PYXEL_DEBUG
 
 class Connection(object):
+    '''
+    A Connection might be a Http or Ftp connection
+    '''
     FTP_DEFAULT_PORT = 21
     FTPS_DEFAULT_PORT = 990
     HTTP_DEFAULT_PORT = 80
@@ -29,26 +32,51 @@ class Connection(object):
         self.ai_family = ai_family
         self.io_timeout = io_timeout
         self.max_redirect = max_redirect
+
+        # Local interface is currently a string, might improve to a list
         self.local_ifs = local_ifs
-        self.output_filename = None
+        # Store the generated request message as a string
         self.request = None
-        self.tcp = Tcp()
         self.status_code = None
+
+        # Store the file name derived from response message
+        self.output_filename = None
+
+        # The tcp tunnel used by application layer
+        self.tcp = Tcp()
+        
         self.lock = threading.Lock()
         self.init_url_params()
+
+        # Store the file size derived from response message
+        self.file_size = None
         self.first_byte = 0
         self.current_byte = 0
         self.last_byte = 0
         self.last_transfer = None
+
+        # What is state
         self.state = False
+
+        # Store the thread reference when multi-threading
         self.setup_thread = None
         self.message = None
+
+        # If a Http is redirected to Ftp, set this flag
         self.redirect_to_ftp = False
 
-    def is_connected(self):
-        return self.tcp.is_connected()
-
     def init_url_params(self):
+        ''' 
+        Store the url and variables parsed from it
+        URL example:
+        http://www.example.com:80/path/to/myfile.html?key1=value1&key2=value2#SomewhereInTheDocument
+        Protocol: http
+        Domain name: www.example.com
+        Port: 80
+        Path to the file: /path/to/myfile.html
+        Parameters: ?Key1=value1&key2=value2
+        Anchor: #SomewhereInTheDocument
+        '''
         self.url = None
         self.scheme = None
         self.port = None
@@ -57,8 +85,10 @@ class Connection(object):
         self.host = None
         self.filedir = None
         self.filename = None
-        self.file_size = None
         self.cgi_params = None
+
+    def is_connected(self):
+        return self.tcp.is_connected()
 
     def analyse_url(self, url):
         parse_results = urlparse(url)

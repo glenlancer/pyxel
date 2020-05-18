@@ -69,9 +69,9 @@ def command_process(argv, config):
             config.max_redirect = int(arg)
         elif opt in ('-o', '--output'):
             if is_filename_valid(arg):
-                config.output_direction = arg
+                config.output_filename_from_cmd = arg
             else:
-                raise Exception(f'Exception in {__name__}: invalid file name.')
+                raise Exception(f'Exception in {__name__}: invalid file name. {arg}')
         elif opt in ('-4', '--ipv4'):
             config.set_protocol('ipv4')
         elif opt in ('-6', '--ipv6'):

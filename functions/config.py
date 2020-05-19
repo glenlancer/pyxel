@@ -58,5 +58,5 @@ class Config(object):
         else:
             raise Exception(f'Exception in {__name__}: unsupported protocol.')
 
-    def parse_interfaces():
+    def parse_interfaces(self):
         pass

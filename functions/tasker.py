@@ -18,7 +18,9 @@ class Tasker(object):
         self.run = True
 
     def start_task(self):
-        print(f'Initializing download: {self.url}')
+        ''' The program\'s main logic '''
+        sys.stdout.write(f'Initializing download: {self.url}\n')
+
         if not self.process.new_preparation(self.url):
             return False
 
@@ -30,6 +32,7 @@ class Tasker(object):
         # TBD.
 
     def check_output_filename(self):
+        ''' To finalize the output file name to be used '''
         if self.config.output_filename_from_cmd and not self.use_output_filename_from_cmd():
             return False
         else:
@@ -49,7 +52,7 @@ class Tasker(object):
         The logic for output file speified from command:
         1) If the file exists, but no state file found, the program won't continue
         2) If the file doesn't exist, but state file exists, then, delete the state file and continue
-        3) 
+        3) Other scenarios are okay
         '''
         output_filename = self.config.output_filename_from_cmd
         # If the command specified a directory, then, the filename is this directory combined
@@ -92,22 +95,21 @@ class Tasker(object):
             ])
             f_exists = os.path.exists(output_filename)
             st_exists = os.path.exists(state_filename)
-            if f_exists:
-                # If file exists, we'll continue only if we can, otherwise, jump it
-                if self.process.is_resuming_supported() and st_exists:
-                    break
+            if f_exists and st_exists and self.process.is_resuming_supported():
+                # If file exists, we'll continue only if we can write it, otherwise jump it
+                break
             elif not st_exists:
-                # If we invent a new file name using suffix, we'll continue only if
+                # If we invent a new file name, we'll continue only if
                 # there is no state file, otherwise jump it
                 break
-            # If file exists and 
+            # We'll continue if file can be written or file and state file pair is brand new
             if len(output_filename) == length:
                 output_filename = ''.join([
                     output_filename, '.0'
                 ])
             else:
                 output_filename = ''.join([
-                    output_filename[:-(i // 10)],
+                    output_filename[:-len(str(i-1))],
                     str(i)
                 ])
             i += 1
@@ -127,4 +129,5 @@ class Tasker(object):
         Use this function to replace signals' default behaviors, by setting run as False
         will tell the program to terminate after everthing necessary thing is settled.
         '''
+        sys.stdout.write('SIGINT or SIGTERM signal recevied, stop running the progam.\n')
         self.run = False

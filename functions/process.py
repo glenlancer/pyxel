@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import threading
 import json
 import time
@@ -23,13 +24,14 @@ class Process(object):
     def __init__(self, config):
         self.config = config
         self.url = None
-        self.messages = []
+
         self.output_filename = ''
-        self.state_filename = ''
+
+        # File related info
         self.output_fd = None
         self.file_size = 0
         self.bytes_done = 0
-        self.conns = []
+        
         self.delay_time = {
             'sec': 0, 'nsec': 0
         }
@@ -37,11 +39,17 @@ class Process(object):
         self.next_state = 0
         self.ready = False
 
+        # Store the connection objects, each works on a portion of the data to be downloaded
+        self.conns = []
+
+        # A list of messages record what happened in Process()
+        self.messages = []
+
     def __del__(self):
         if self.messages:
             print(f'Dump all stored messages for {__name__}')
             for message in self.messages:
-                print(message)
+                sys.stdout.write(''.join([message, '\n']))
 
     def prepare_connections(self, num_of_connections):
         for _ in range(num_of_connections):
@@ -62,7 +70,7 @@ class Process(object):
                     self.config.max_redirect,
                     self.config.interfaces[0]
                 )
-        self.conns.append(new_conn)
+            self.conns.append(new_conn)
 
     def prepare_1st_connection(self):
         self.conns = []

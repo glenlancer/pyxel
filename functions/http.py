@@ -18,14 +18,13 @@ class Http(Connection):
         self.http_proxy = http_proxy
         self.no_proxies = no_proxies
         self.http_basic_auth = None
-        self.request = None
         self.response = None
         self.resuming_supported = True
 
     def check_if_no_proxy(self):
-        ''' If the target hostname is in no_procies list, then don\'t use proxy. '''
+        ''' If the target hostname is in no_proxies list, then don\'t use proxy. '''
         for no_proxy in self.no_proxies:
-            if self.hostname == no_proxy:
+            if self.host == no_proxy:
                 self.http_proxy = None
                 break
 
@@ -182,7 +181,7 @@ class Http(Connection):
             else:
                 self.add_header(f'Host: %s:%d' % (self.host, self.port))
         else:
-            proto_str = self.get_scheme(self.scheme)
+            proto_str = self.get_scheme_str(self.scheme)
             if self.is_default_port(self.port):
                 get_str = ''.join([proto_str, self.host, self.filedir, self.filename])
             else:
@@ -253,7 +252,7 @@ class Http(Connection):
         elif redirect_url[0] == '/':
             return '%s%s:%i%s' % \
                 (
-                    self.get_scheme(self.scheme),
+                    self.get_scheme_str(self.scheme),
                     self.host,
                     self.port,
                     redirect_url

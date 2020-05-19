@@ -103,7 +103,7 @@ class Tcp(object):
         print(f'Unable to connect to server {hostname}:{port} {reason}')
 
     @staticmethod
-    def is_valid_address(socket_type, adress):
+    def is_valid_address(socket_type, address):
         try:
             socket.inet_pton(socket_type, address)
         except socket.error:

@@ -46,6 +46,7 @@ class Connection(object):
         self.tcp = Tcp()
         
         self.lock = threading.Lock()
+
         self.init_url_params()
 
         # Store the file size derived from response message
@@ -175,7 +176,7 @@ class Connection(object):
         return re.compile('^(.*/)([^/]*)$').findall(path)[0]
 
     def generate_url(self, with_cgi_params=False):
-        full_url = self.get_scheme(self.scheme)
+        full_url = self.get_scheme_str(self.scheme)
         if self.user and self.user != 'anonymous':
             full_url = ''.join([
                 full_url, self.user, ':', self.password, '@'
@@ -187,8 +188,11 @@ class Connection(object):
             full_url = ''.join([full_url, '?', self.cgi_params])
         return full_url
 
+    def is_secure_scheme(self):
+        return (self.scheme == self.HTTPS) or (self.scheme == self.FTPS)
+
     @staticmethod
-    def get_scheme(protocol):
+    def get_scheme_str(protocol):
         if protocol == Connection.FTP:
             return 'ftp://'
         elif protocol == Connection.FTPS:
@@ -210,6 +214,3 @@ class Connection(object):
             return Connection.FTP
         else:
             raise Exception(f'Exception in {__name__}: unsupported scheme from {url}.')
-
-    def is_secure_scheme(self):
-        return (self.scheme == self.HTTPS) or (self.scheme == self.FTPS)

@@ -19,7 +19,7 @@ class Http(Connection):
         self.no_proxies = no_proxies
         self.http_basic_auth = None
         self.response = None
-        self.resuming_supported = True
+        self.resuming_supported = False
 
     def check_if_no_proxy(self):
         ''' If the target hostname is in no_proxies list, then don\'t use proxy. '''

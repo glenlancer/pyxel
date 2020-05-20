@@ -91,18 +91,13 @@ class Connection(object):
     def is_connected(self):
         return self.tcp.is_connected()
 
-    def analyse_url(self, url):
-        parse_results = urlparse(url)
-        scheme, port = self.parse_scheme(parse_results.scheme)
-        user, password, host, new_port = self.parse_netloc(parse_results.netloc)
-        filedir, filename = self.parse_path(parse_results.path)
-        if new_port is not None:
-            port = new_port
-        cgi_params = parse_results.query
-        return scheme, port, user, password, host, filedir, filename, cgi_params
+    def is_secure_scheme(self):
+        return (self.scheme == self.HTTPS) or (self.scheme == self.FTPS)
 
     def set_url(self, url):
-        self.init_url_params()
+        '''
+        Set Url to the connection and have it parsed.
+        '''
         self.url = url
         self.scheme, self.port, self.user, self.password, \
         self.host, self.filedir, self.filename, self.cgi_params \
@@ -120,6 +115,16 @@ class Connection(object):
             sys.stderr.write(f'File: {self.filename}\n')
             sys.stderr.write(f'Cgi: {self.cgi_params}\n')
             sys.stderr.write('--- End of Url Parsing ---\n')
+
+    def analyse_url(self, url):
+        parse_results = urlparse(url)
+        scheme, port = self.parse_scheme(parse_results.scheme)
+        user, password, host, new_port = self.parse_netloc(parse_results.netloc)
+        filedir, filename = self.parse_path(parse_results.path)
+        if new_port is not None:
+            port = new_port
+        cgi_params = parse_results.query
+        return scheme, port, user, password, host, filedir, filename, cgi_params
 
     def parse_scheme(self, scheme):
         if scheme.lower() == 'ftp':
@@ -187,9 +192,6 @@ class Connection(object):
         if with_cgi_params:
             full_url = ''.join([full_url, '?', self.cgi_params])
         return full_url
-
-    def is_secure_scheme(self):
-        return (self.scheme == self.HTTPS) or (self.scheme == self.FTPS)
 
     @staticmethod
     def get_scheme_str(protocol):

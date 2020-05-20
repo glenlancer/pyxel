@@ -21,6 +21,9 @@ class Process(object):
     # 100 KB
     MIN_CHUNK_WORTH = 100 * 1024
 
+    # 1 sec == 1000000000 nsec
+    NSECs_IN_1_SEC = 1000000000
+
     def __init__(self, config):
         self.config = config
         self.url = None
@@ -32,10 +35,9 @@ class Process(object):
         self.file_size = 0
         self.bytes_done = 0
         
-        self.delay_time = {
+        self.delay_time_for_process = {
             'sec': 0, 'nsec': 0
         }
-        self.tuning_params()
         self.next_state = 0
         self.ready = False
 
@@ -47,7 +49,7 @@ class Process(object):
 
     def __del__(self):
         if self.messages:
-            print(f'Dump all stored messages for {__name__}')
+            sys.stdout.write(f'Dump all stored messages for {__name__}\n')
             for message in self.messages:
                 sys.stdout.write(''.join([message, '\n']))
 
@@ -84,20 +86,27 @@ class Process(object):
         return self.conns[0].resuming_supported
 
     def tuning_params(self):
+        '''
+        If config.max_speed is defined, then adjust config.buffer_size and delay_time_for_process
+        '''
         if self.config.max_speed > 0:
             # To make max_speed / buffer_size < 0.5
             if self.config.max_speed * 16 // self.config.buffer_size < 8:
                 if self.config.verbose:
-                    self.add_message('Buffer resized for this speed.')
+                    self.add_message(
+                        'Buffer resized for this speed. '
+                        f'{self.config.buffer_size} to {self.config.max_speed}'
+                    )
                 self.config.buffer_size = self.config.max_speed
-            delay = 1000000000 * \
+            delay = Process.NSECs_IN_1_SEC * \
                 self.config.buffer_size * \
                 self.config.num_of_connections // \
                 self.config.max_speed
-            self.delay_time['sec'] = delay // 1000000000
-            self.delay_time['nsec'] = delay % 1000000000
+            self.delay_time_for_process['sec'] = delay // Process.NSECs_IN_1_SEC
+            self.delay_time_for_process['nsec'] = delay % Process.NSECs_IN_1_SEC
 
     def set_output_filename(self):
+        ''' Set output filename using the filename in the URL '''
         self.output_filename = unquote(self.conns[0].filename)
         if self.output_filename == '':
             # This happens when we download index page.
@@ -106,10 +115,11 @@ class Process(object):
     def clobber_existing_file(self):
         if self.config.no_clobber and os.path.isfile(self.output_filename):
             if os.path.isfile(''.join([self.output_filename, '.st'])):
-                print(f'Incomplete download found for {self.output_filename}, \
+                self.add_message(f'Incomplete download found for {self.output_filename}, \
                     ignoring no-clobber option.\n')
             else:
-                print(f'File {self.output_filename} already exists, not downloading.')
+                self.add_message(f'File {self.output_filename} already exists, not downloading.')
+                # Is this necessary?
                 self.ready = False
                 return False
         return True
@@ -117,14 +127,15 @@ class Process(object):
     # map axel_new()
     def new_preparation(self, url):
         '''
+        Do preparation for the downloading, including:
         Get resource information by sending a GET request to the target URL
         and analysing the response.
         '''
         self.url = url
+        self.tuning_params()
         self.prepare_1st_connection()
         self.conns[0].set_url(url)
 
-        # Set output filename using the filename in the URL.
         self.set_output_filename()
         if not self.clobber_existing_file():
             return False
@@ -227,7 +238,7 @@ class Process(object):
                 thread_id,
                 None
             )
-            print('Exception raise within thread failed')
+            sys.stderr.write('Exception raise within thread failed\n')
 
     @staticmethod
     def setup_connection_thread(conn):
@@ -352,8 +363,7 @@ class Process(object):
                             .format(i, conn.host, conn.port, conn.local_ifs))
                     conn.state = True
                     
-
-    def main_loop(self):
+    def do_main_loop(self):
         delay_time = {
             'sec': 0, 'nsec': 100000000
         }

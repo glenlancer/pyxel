@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import threading
 import json
 import time
@@ -20,28 +21,37 @@ class Process(object):
     # 100 KB
     MIN_CHUNK_WORTH = 100 * 1024
 
+    # 1 sec == 1000000000 nsec
+    NSECs_IN_1_SEC = 1000000000
+
     def __init__(self, config):
         self.config = config
         self.url = None
-        self.messages = []
-        self.output_filename = ''
-        self.state_filename = ''
+
+        # File related info
         self.output_fd = None
+        self.output_filename = None
+        self.state_filename = None
         self.file_size = 0
         self.bytes_done = 0
-        self.conns = []
-        self.delay_time = {
+        
+        self.delay_time_for_process = {
             'sec': 0, 'nsec': 0
         }
-        self.tuning_params()
         self.next_state = 0
         self.ready = False
 
+        # Store the connection objects, each works on a portion of the data to be downloaded
+        self.conns = []
+
+        # A list of messages record what happened in Process()
+        self.messages = []
+
     def __del__(self):
         if self.messages:
-            print(f'Dump all stored messages for {__name__}')
+            sys.stdout.write(f'Dump all stored messages for {__name__}\n')
             for message in self.messages:
-                print(message)
+                sys.stdout.write(''.join([message, '\n']))
 
     def prepare_connections(self, num_of_connections):
         for _ in range(num_of_connections):
@@ -62,7 +72,7 @@ class Process(object):
                     self.config.max_redirect,
                     self.config.interfaces[0]
                 )
-        self.conns.append(new_conn)
+            self.conns.append(new_conn)
 
     def prepare_1st_connection(self):
         self.conns = []
@@ -70,23 +80,33 @@ class Process(object):
 
     def prepare_other_connections(self):
         assert len(self.conns) == 1
-        self.prepare_other_connections(self.num_of_connections - 1)
+        self.prepare_connections(self.num_of_connections - 1)
+
+    def is_resuming_supported(self):
+        return self.conns[0].resuming_supported
 
     def tuning_params(self):
+        '''
+        If config.max_speed is defined, then adjust config.buffer_size and delay_time_for_process
+        '''
         if self.config.max_speed > 0:
             # To make max_speed / buffer_size < 0.5
             if self.config.max_speed * 16 // self.config.buffer_size < 8:
                 if self.config.verbose:
-                    self.add_message('Buffer resized for this speed.')
+                    self.add_message(
+                        'Buffer resized for this speed. '
+                        f'{self.config.buffer_size} to {self.config.max_speed}'
+                    )
                 self.config.buffer_size = self.config.max_speed
-            delay = 1000000000 * \
+            delay = Process.NSECs_IN_1_SEC * \
                 self.config.buffer_size * \
                 self.config.num_of_connections // \
                 self.config.max_speed
-            self.delay_time['sec'] = delay // 1000000000
-            self.delay_time['nsec'] = delay % 1000000000
+            self.delay_time_for_process['sec'] = delay // Process.NSECs_IN_1_SEC
+            self.delay_time_for_process['nsec'] = delay % Process.NSECs_IN_1_SEC
 
     def set_output_filename(self):
+        ''' Set output filename using the filename in the URL '''
         self.output_filename = unquote(self.conns[0].filename)
         if self.output_filename == '':
             # This happens when we download index page.
@@ -95,10 +115,11 @@ class Process(object):
     def clobber_existing_file(self):
         if self.config.no_clobber and os.path.isfile(self.output_filename):
             if os.path.isfile(''.join([self.output_filename, '.st'])):
-                print(f'Incomplete download found for {self.output_filename}, \
+                self.add_message(f'Incomplete download found for {self.output_filename}, \
                     ignoring no-clobber option.\n')
             else:
-                print(f'File {self.output_filename} already exists, not downloading.')
+                self.add_message(f'File {self.output_filename} already exists, not downloading.')
+                # Is this necessary?
                 self.ready = False
                 return False
         return True
@@ -106,20 +127,23 @@ class Process(object):
     # map axel_new()
     def new_preparation(self, url):
         '''
+        Do preparation for the downloading, including:
         Get resource information by sending a GET request to the target URL
         and analysing the response.
         '''
         self.url = url
+        self.tuning_params()
         self.prepare_1st_connection()
         self.conns[0].set_url(url)
 
-        # Set output filename using the filename in the URL.
         self.set_output_filename()
         if not self.clobber_existing_file():
             return False
 
         while True:
             if not self.conns[0].get_resource_info():
+                # Is this necessary?
+                self.ready = False
                 return False
             if not self.conns[0].redirect_to_ftp:
                 break
@@ -223,8 +247,9 @@ class Process(object):
                 thread_id,
                 None
             )
-            print('Exception raise within thread failed')
+            sys.stderr.write('Exception raise within thread failed\n')
 
+    @staticmethod
     def setup_connection_thread(conn):
         # Do we need to enable thread to be cancalable in python or can we do it?
         conn.lock.acquire(blocking=False)
@@ -241,25 +266,33 @@ class Process(object):
         conn.state = False
         conn.lock.release()
 
-    def reactivate_connection(self, index):
+    def reactivate_connection(self, i):
+        ''' 
+        reactivate the connection to find some more work to do 
+        this function only changes current_byte and last_byte if it can
+        Went through on 5/21/2020
+        '''
         max_remaining = 0
         max_index = None
-        if self.conns[index].enabled or self.conns[i].current_byte < self.conns[i].last_byte:
+
+        if self.conns[i].enabled or self.conns[i].current_byte < self.conns[i].last_byte:
             return
-        
-        for i in range(self.num_of_connections):
-            remaining = self.conns[i].last_byte - self.conns[i].current_byte
+
+        for conn_i, conn in enumerate(self.conns):
+            if conn_i == i:
+                continue
+            remaining = conn.last_byte - conn.current_byte
             if remaining > max_remaining:
                 max_remaining = remaining
-                max_index = i
+                max_index = conn_i
         
         # Do not reactivate unless large enough
-        if max_remaining > self.MIN_CHUNK_WORTH and max_index is not None:
+        if max_index and max_remaining > self.MIN_CHUNK_WORTH:
             if PYXEL_DEBUG:
-                print(f'Reactivate connection {index}')
-            self.conns[index].last_byte = self.conns[max_index].last_byte
+                print(f'Reactivate connection {i}')
+            self.conns[i].last_byte = self.conns[max_index].last_byte
             self.conns[max_index].last_byte = self.conns[max_index].current_byte + max_remaining // 2
-            self.conns[index].current_byte = self.conns[max_index].last_byte
+            self.conns[i].current_byte = self.conns[max_index].last_byte
 
     def open_file(self, filename, mode):
         try:
@@ -354,6 +387,18 @@ class Process(object):
 
     def connections_check(self):
         ''' Look for aborted connections and attempt to restart them. '''
+        for i, conn in enumerate(self.conns):
+            if not conn.lock.acquire(blocking=False):
+                continue
+            if not conn.enabled and conn.current_byte < conn.last_byte:
+                if not conn.state:
+                    # Wait for termination of this thread
+                    conn.setup_thread.join()
+
+                    if self.config.verbose:
+                        self.add_message('Connection {0} downloading from {1}:{2} using interface {3}'
+                            .format(i, conn.host, conn.port, conn.local_ifs))
+                    conn.state = True
 
     def do_downloading(self):
         delay_time_in_second = 0.1
@@ -364,7 +409,6 @@ class Process(object):
         if not ready_connections:
             time.sleep(delay_time_in_second)
             self.ready = False
-
 
     def close(self):
         pass
@@ -377,7 +421,7 @@ class Process(object):
 
     def save_state(self):
         # No use for .st file if the server doesn't support resuming.
-        if not self.conn[0].resuming_supported:
+        if not self.conns[0].resuming_supported:
             return
         assert len(self.conns) == self.config.num_of_connections
         state = {

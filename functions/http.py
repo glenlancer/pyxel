@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import base64, re
+import base64
+import re
 from .connection import Connection
 
 from .config import PYXEL_DEBUG
@@ -13,28 +14,31 @@ class Http(Connection):
         ai_family, io_timeout, max_redirect, request_headers={},
         http_proxy=None, no_proxies=None, local_ifs=None):
         super(Http, self).__init__(ai_family, io_timeout, max_redirect, local_ifs)
-        self.request_headers = request_headers
-        self.response_headers = {}
         self.http_proxy = http_proxy
         self.no_proxies = no_proxies
         self.http_basic_auth = None
-        self.request = None
+        self.use_http_proxy = True
         self.response = None
-        self.resuming_supported = True
+        self.request_headers = request_headers
+        self.response_headers = {}
+        self.resuming_supported = False
 
     def check_if_no_proxy(self):
-        ''' If the target hostname is in no_procies list, then don\'t use proxy. '''
-        for no_proxy in self.no_proxies:
-            if self.hostname == no_proxy:
-                self.http_proxy = None
-                break
+        '''
+        If the target hostname is in no_proxies list, then don\'t use proxy.
+        Reviewed on 5/21/2020
+        '''
+        if self.host in self.no_proxies:
+            self.use_http_proxy = False
 
     def connect(self):
+        ''' Estabilish a Tcp connection to the host ''' 
         host = self.host
         port = self.port
         user = self.user
         password = self.password
-        if self.http_proxy:
+        self.check_if_no_proxy()
+        if self.use_http_proxy and self.http_proxy:
             # Need to check how http_proxy actually works later.
             _, port, user, password, \
             host, _, _, _ \
@@ -55,10 +59,9 @@ class Http(Connection):
     def disconnect(self):
         self.tcp.close()
 
-    def init(self):
+    def connection_init(self):
         if self.url is None:
             raise Exception(f'Exception in {__name__}: set_url() needs to be called first.')
-        self.check_if_no_proxy()
         if not self.connect():
             self.disconnect()
             return False
@@ -66,8 +69,7 @@ class Http(Connection):
 
     def setup(self):
         if not self.is_connected():
-            if not self.init():
-                return False
+            raise Exception(f'Exception in {__name__}: connection needs to be estabilished first, call connection_init().')
         self.first_byte = -1
         if self.resuming_supported:
             self.first_byte = self.current_byte
@@ -113,9 +115,9 @@ class Http(Connection):
 
     def send_get_request(self):
         if PYXEL_DEBUG:
-            sys.stderr.write('--- Sending request ---\n')
-            sys.stderr.write(self.request)
-            sys.stderr.write('--- End of request ---\n')
+            sys.stdout.write('--- Sending request ---\n')
+            sys.stdout.write(self.request)
+            sys.stdout.write('--- End of request ---\n')
         self.request = ''.join([self.request, '\r\n'])
         try:
             self.tcp.send(self.request.encode('utf-8'))
@@ -182,7 +184,7 @@ class Http(Connection):
             else:
                 self.add_header(f'Host: %s:%d' % (self.host, self.port))
         else:
-            proto_str = self.get_scheme(self.scheme)
+            proto_str = self.get_scheme_str(self.scheme)
             if self.is_default_port(self.port):
                 get_str = ''.join([proto_str, self.host, self.filedir, self.filename])
             else:
@@ -253,7 +255,7 @@ class Http(Connection):
         elif redirect_url[0] == '/':
             return '%s%s:%i%s' % \
                 (
-                    self.get_scheme(self.scheme),
+                    self.get_scheme_str(self.scheme),
                     self.host,
                     self.port,
                     redirect_url

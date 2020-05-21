@@ -23,6 +23,9 @@ class Tasker(object):
         if not self.check_output_filename()
             return False
 
+        if not self.process.open_local_files()
+            return False
+
         self.setup_signal_hook()
 
     def check_output_filename(self):

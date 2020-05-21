@@ -150,7 +150,7 @@ class Process(object):
                 self.add_message('File size: unavailable.')
 
     # map axel_open()
-    def open_local_files(self, urls):
+    def open_local_files(self):
         ''' Open a local file to store the downloaded data. '''
         self.output_fd = None
         if self.config.verbose:
@@ -171,19 +171,24 @@ class Process(object):
             if self.output_fd is None:
                 return False
             if self.num_of_connections > 1:
-                # Check whether the fs can handle seeks to past EOF areas.
                 self.check_seek_past_eof()
         return True
 
     def check_seek_past_eof(self):
+        ''' 
+        Check whether the fs can handle seeks to past EOF areas.
+        For most or all fs, this might be not needed.
+        '''
         pass
 
-    def start(self):
-        target_url = self.conns[0].url
-        for conn in self.conns:
-            conn.set_url(target_url)
+    def start_downloading(self):
+        for conn in self.conns[1:]:
+            conn.set_url(self.url)
+            conn.resuming_supported = True
+
         if self.config.verbose:
             print('Starting download...')
+
         for i in range(self.num_of_connections):
             if self.conns[i].current_byte > self.conns[i].last_byte:
                 self.reactivate_connection(i)
@@ -199,6 +204,8 @@ class Process(object):
                     target=setup_connection_thread,
                     args=(self.conns[i],)
                 )
+
+        # The real downloading starts from here.
         self.start_time = time.time()
         self.ready = True
 
@@ -219,11 +226,12 @@ class Process(object):
             print('Exception raise within thread failed')
 
     def setup_connection_thread(conn):
-        conn.lock.acquire()
+        # Do we need to enable thread to be cancalable in python or can we do it?
+        conn.lock.acquire(blocking=False)
         #if conn.get_resource_info()
         if conn.setup():
             conn.last_transfer = time.time()
-            if conn.execute():
+            if conn.execute_req_resp():
                 conn.last_transfer = time.time()
                 conn.enabled = True
             else:
@@ -317,7 +325,7 @@ class Process(object):
 
         if PYXEL_DEBUG:
             for i in range(self.config.num_of_connections):
-                print('Downloading {0}-{1} using conn: \{{2}\}'.format(
+                print('Downloading {0}-{1} using conn: {{{2}}}'.format(
                     self.conns[i].current_byte,
                     self.conns[i].last_byte,
                     i
@@ -326,17 +334,37 @@ class Process(object):
     def add_message(self, message):
         self.messages.append(message)
 
-    def main_loop(self):
-        delay_time = {
-            'sec': 0, 'nsec': 100000000
-        }
-        current_time = time.time()
-        if current_time > self.next_state:
+    def create_state_file_periodically(self):
+        ''' Create state file periodically. '''
+        if time.time() > self.next_state:
             self.save_state()
             self.next_state = current_time + self.config.save_state_interval
 
-    def start(self):
-        pass
+    def wait_for_data(self):
+        ''' Wait data on (one of) the connections '''
+        ready_connections = []
+        for conn in self.conns:
+            # Skip connection if setup thread hasn't released the lock yet.
+            # enabled is shared variable.
+            if not conn.lock.acquire(blocking=False):
+                if conn.enabled:
+                    ready_connections.append(conn)
+                conn.lock.release()
+        return ready_connections
+
+    def connections_check(self):
+        ''' Look for aborted connections and attempt to restart them. '''
+
+    def do_downloading(self):
+        delay_time_in_second = 0.1
+
+        self.create_state_file_periodically()
+
+        ready_connections = self.wait_for_data()
+        if not ready_connections:
+            time.sleep(delay_time_in_second)
+            self.ready = False
+
 
     def close(self):
         pass

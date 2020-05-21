@@ -5,20 +5,21 @@ import sys
 import re
 import threading
 from urllib.parse import urlparse
-from .tcp import Tcp
 
+from .tcp import Tcp
 from .config import PYXEL_DEBUG
 
 class Connection(object):
-    FTP_DEFAULT_PORT = 21
-    FTPS_DEFAULT_PORT = 990
-    HTTP_DEFAULT_PORT = 80
-    HTTPS_DEFAULT_PORT = 443
 
     HTTP = 0
     HTTPS = 1
     FTP = 2
     FTPS = 3
+
+    FTP_DEFAULT_PORT = 21
+    FTPS_DEFAULT_PORT = 990
+    HTTP_DEFAULT_PORT = 80
+    HTTPS_DEFAULT_PORT = 443
 
     ANONYMOUS_USER = 'anonymous'
     ANONYMOUS_PASS = 'mailto:anonymous@unkonwn.com'

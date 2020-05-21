@@ -102,48 +102,65 @@ class Connection(object):
         self.scheme, self.port, self.user, self.password, \
         self.host, self.filedir, self.filename, self.cgi_params \
             = self.analyse_url(url)
-        if PYXEL_DEBUG:
-            sys.stderr.write('--- URL Parsing ---\n')
-            sys.stderr.write(f'Url: {self.url}')
-            sys.stderr.write('Pasring results:\n')
-            sys.stderr.write(f'Scheme: {self.scheme}\n')
-            sys.stderr.write(f'Port: {self.port}\n')
-            sys.stderr.write(f'User: {self.user}\n')
-            sys.stderr.write(f'Password: {self.password}\n')
-            sys.stderr.write(f'Host: {self.host}\n')
-            sys.stderr.write(f'Dir: {self.filedir}\n')
-            sys.stderr.write(f'File: {self.filename}\n')
-            sys.stderr.write(f'Cgi: {self.cgi_params}\n')
-            sys.stderr.write('--- End of Url Parsing ---\n')
 
-    def analyse_url(self, url):
+    def generate_url(self, with_cgi_params=False):
+        full_url = self.get_scheme_str(self.scheme)
+        if self.user and self.user != 'anonymous':
+            full_url = ''.join([full_url, self.user, ':', self.password, '@'])
+        full_url = ''.join([full_url, self.host, ':', self.port, self.filedir, self.filename ])
+        if with_cgi_params:
+            full_url = ''.join([full_url, '?', self.cgi_params])
+        return full_url
+
+    @staticmethod
+    def analyse_url(url):
         parse_results = urlparse(url)
-        scheme, port = self.parse_scheme(parse_results.scheme)
-        user, password, host, new_port = self.parse_netloc(parse_results.netloc)
-        filedir, filename = self.parse_path(parse_results.path)
+        scheme, port = Connection.parse_scheme(parse_results.scheme)
+        user, password, host, new_port = Connection.parse_netloc(scheme, parse_results.netloc)
+        filedir, filename = Connection.parse_path(parse_results.path)
         if new_port is not None:
             port = new_port
         cgi_params = parse_results.query
+        if PYXEL_DEBUG:
+            sys.stderr.write('--- URL Parsing ---\n')
+            sys.stderr.write(f'Url: {url}')
+            sys.stderr.write('Pasring results:\n')
+            sys.stderr.write(f'Scheme: {scheme}\n')
+            sys.stderr.write(f'Port: {port}\n')
+            sys.stderr.write(f'User: {user}\n')
+            sys.stderr.write(f'Password: {password}\n')
+            sys.stderr.write(f'Host: {host}\n')
+            sys.stderr.write(f'Dir: {filedir}\n')
+            sys.stderr.write(f'File: {filename}\n')
+            sys.stderr.write(f'Cgi: {cgi_params}\n')
+            sys.stderr.write('--- End of Url Parsing ---\n')
         return scheme, port, user, password, host, filedir, filename, cgi_params
 
-    def parse_scheme(self, scheme):
+    @staticmethod
+    def parse_scheme(scheme):
         if scheme.lower() == 'ftp':
-            return self.FTP, self.FTP_DEFAULT_PORT
+            return Connection.FTP, Connection.FTP_DEFAULT_PORT
         elif scheme.lower() == 'ftps':
-            return self.FTPS, self.FTPS_DEFAULT_PORT
+            return Connection.FTPS, Connection.FTPS_DEFAULT_PORT
         elif scheme.lower() == 'http':
-            return self.HTTP, self.HTTP_DEFAULT_PORT
+            return Connection.HTTP, Connection.HTTP_DEFAULT_PORT
         elif scheme.lower() == 'https':
-            return self.HTTPS, self.HTTPS_DEFAULT_PORT
+            return Connection.HTTPS, Connection.HTTPS_DEFAULT_PORT
         else:
             raise Exception(f'Exception in {__name__}: unsupported scheme, {scheme}.')
 
-    def parse_netloc(self, netloc):
-        rest_of_netloc, user, password = self.parse_user_and_password(netloc)
-        hostname, port = self.parse_hostname_and_port(rest_of_netloc)
+    @staticmethod
+    def parse_path(path):
+        return re.compile('^(.*/)([^/]*)$').findall(path)[0]
+
+    @staticmethod
+    def parse_netloc(scheme, netloc):
+        rest_of_netloc, user, password = Connection.parse_user_and_password(scheme, netloc)
+        hostname, port = Connection.parse_hostname_and_port(rest_of_netloc)
         return user, password, hostname, port
 
-    def parse_user_and_password(self, netloc):
+    @staticmethod
+    def parse_user_and_password(scheme, netloc):
         '''
             netloc example: 
             (1) username:password@www.my_site.com:123
@@ -151,18 +168,17 @@ class Connection(object):
         '''
         split_result = netloc.split('@')
         if len(split_result) < 2:
-            if self.scheme in (self.FTP, self.FTPS):
-                user = self.ANONYMOUS_USER
-                password = self.ANONYMOUS_PASS
+            if scheme in (Connection.FTP, Connection.FTPS):
+                user, password = Connection.ANONYMOUS_USER, Connection.ANONYMOUS_PASS
             else:
-                user = ''
-                password = ''
+                user, password = '', ''
             return split_result[0], user, password
         else:
             user, password = split_result[0].split(':')
             return split_result[1], user, password
 
-    def parse_hostname_and_port(self, rest_of_netloc):
+    @staticmethod
+    def parse_hostname_and_port(rest_of_netloc):
         if rest_of_netloc.startswith('['):
             hostname, port = re.compile('^(\[.+\]):{0,1}([0-9]*)$').findall(rest_of_netloc)[0]
             if port != '':
@@ -176,22 +192,6 @@ class Connection(object):
                 hostname = split_result[0]
                 port = None
         return hostname, port
-
-    def parse_path(self, path):
-        return re.compile('^(.*/)([^/]*)$').findall(path)[0]
-
-    def generate_url(self, with_cgi_params=False):
-        full_url = self.get_scheme_str(self.scheme)
-        if self.user and self.user != 'anonymous':
-            full_url = ''.join([
-                full_url, self.user, ':', self.password, '@'
-            ])
-        full_url = ''.join([
-            full_url, self.host, ':', self.port, self.filedir, self.file
-        ])
-        if with_cgi_params:
-            full_url = ''.join([full_url, '?', self.cgi_params])
-        return full_url
 
     @staticmethod
     def get_scheme_str(protocol):

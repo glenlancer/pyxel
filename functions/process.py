@@ -28,10 +28,10 @@ class Process(object):
         self.config = config
         self.url = None
 
-        self.output_filename = ''
-
         # File related info
         self.output_fd = None
+        self.output_filename = None
+        self.state_filename = None
         self.file_size = 0
         self.bytes_done = 0
         
@@ -142,6 +142,8 @@ class Process(object):
 
         while True:
             if not self.conns[0].get_resource_info():
+                # Is this necessary?
+                self.ready = False
                 return False
             if not self.conns[0].redirect_to_ftp:
                 break
@@ -340,7 +342,7 @@ class Process(object):
 
         if PYXEL_DEBUG:
             for i in range(self.config.num_of_connections):
-                print('Downloading {0}-{1} using conn: \{{2}\}'.format(
+                print('Downloading {0}-{1} using conn: {{{2}}}'.format(
                     self.conns[i].current_byte,
                     self.conns[i].last_byte,
                     i

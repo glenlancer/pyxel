@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import base64, re
+import base64
+import re
 from .connection import Connection
 
 from .config import PYXEL_DEBUG
@@ -13,12 +14,12 @@ class Http(Connection):
         ai_family, io_timeout, max_redirect, request_headers={},
         http_proxy=None, no_proxies=None, local_ifs=None):
         super(Http, self).__init__(ai_family, io_timeout, max_redirect, local_ifs)
-        self.request_headers = request_headers
-        self.response_headers = {}
         self.http_proxy = http_proxy
         self.no_proxies = no_proxies
         self.http_basic_auth = None
         self.response = None
+        self.request_headers = request_headers
+        self.response_headers = {}
         self.resuming_supported = False
 
     def check_if_no_proxy(self):
@@ -29,6 +30,7 @@ class Http(Connection):
                 break
 
     def connect(self):
+        ''' Estabilish a Tcp connection to the host ''' 
         host = self.host
         port = self.port
         user = self.user
@@ -54,7 +56,7 @@ class Http(Connection):
     def disconnect(self):
         self.tcp.close()
 
-    def init(self):
+    def connection_init(self):
         if self.url is None:
             raise Exception(f'Exception in {__name__}: set_url() needs to be called first.')
         self.check_if_no_proxy()
@@ -65,7 +67,7 @@ class Http(Connection):
 
     def setup(self):
         if not self.is_connected():
-            if not self.init():
+            if not self.connection_init():
                 return False
         self.first_byte = -1
         if self.resuming_supported:
@@ -112,9 +114,9 @@ class Http(Connection):
 
     def send_get_request(self):
         if PYXEL_DEBUG:
-            sys.stderr.write('--- Sending request ---\n')
-            sys.stderr.write(self.request)
-            sys.stderr.write('--- End of request ---\n')
+            sys.stdout.write('--- Sending request ---\n')
+            sys.stdout.write(self.request)
+            sys.stdout.write('--- End of request ---\n')
         self.request = ''.join([self.request, '\r\n'])
         try:
             self.tcp.send(self.request.encode('utf-8'))

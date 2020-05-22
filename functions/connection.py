@@ -10,17 +10,9 @@ from .tcp import Tcp
 from .config import PYXEL_DEBUG
 
 class Connection(object):
-<<<<<<< HEAD
-=======
     '''
     A Connection might be a Http or Ftp connection
     '''
-    FTP_DEFAULT_PORT = 21
-    FTPS_DEFAULT_PORT = 990
-    HTTP_DEFAULT_PORT = 80
-    HTTPS_DEFAULT_PORT = 443
->>>>>>> 3accbd15d7506d5f290a6a080632fa1e7a5a16ff
-
     HTTP = 0
     HTTPS = 1
     FTP = 2

@@ -244,9 +244,12 @@ class Process(object):
 
     @staticmethod
     def setup_connection_thread(conn):
+        '''
+        Thread used to set up a connection
+        Reviewed on 5/22/2020
+        '''
         # Do we need to enable thread to be cancalable in python or can we do it?
-        conn.lock.acquire(blocking=False)
-        #if conn.get_resource_info()
+        conn.lock.acquire()
         if conn.setup():
             conn.last_transfer = time.time()
             if conn.execute_req_resp():
@@ -410,6 +413,16 @@ class Process(object):
                         self.add_message('Connection {0} downloading from {1}:{2} using interface {3}'
                             .format(i, conn.host, conn.port, conn.local_ifs))
                     conn.state = True
+                    conn.setup_thread = threading.Thread(
+                        target=self.setup_connection_thread,
+                        args=(conn,)
+                    )
+                elif time.time() > conn.last_transfer + self.config.reconnect_delay:
+                    self.__cancel_thread(conn.setup_thread)
+                    conn.state = False
+                    conn.setup_thread.join()
+            conn.lock.release()
+
 
     def do_downloading(self):
         delay_time_in_second = 0.1
@@ -421,8 +434,23 @@ class Process(object):
             time.sleep(delay_time_in_second)
             self.ready = False
 
-    def close(self):
-        pass
+    def terminate(self):
+        ''' 
+        Terminate a downloading process
+        Reviewed on 5/22/2020
+        '''
+        for conn in self.conns:
+            if conn.setup_thread:
+                self.__cancel_thread(conn.setup_thread)
+                conn.setup_thread.join()
+            conn.disconnect()
+
+        if self.ready:
+            os.unlink(self.state_filename)
+        elif self.bytes_done > 0:
+            self.save_state()
+
+        os.close(self.output_fd)
 
     def save_state(self):
         # No use for .st file if the server doesn't support resuming.

@@ -130,6 +130,7 @@ class Process(object):
         Do preparation for the downloading, including:
         Get resource information by sending a GET request to the target URL
         and analysing the response.
+        Reviewed on 5/22/2020, the HTTP redirects to FTP need to be added here.
         '''
         self.url = url
         self.tuning_params()
@@ -141,16 +142,18 @@ class Process(object):
             return False
 
         while True:
-            if not self.conns[0].get_resource_info():
+            if False in (self.conns[0].connection_init(), self.conns[0].get_resource_info()):
                 # Is this necessary?
                 self.ready = False
                 return False
+
             if not self.conns[0].redirect_to_ftp:
                 break
+
             # This is for redirection from HTTP to FTP,
             # which could only happen once, as FTP can't
             # be redirected back to HTTP.
-            # Hanle HTTP redirects to FTP here...
+            # Handle HTTP redirects to FTP here...
             pass
 
         # Always use the filename we got from HTTP response, if there is one.
@@ -175,7 +178,10 @@ class Process(object):
 
     # map axel_open()
     def open_local_files(self):
-        ''' Open a local file to store the downloaded data. '''
+        '''
+        Open a local file to store the downloaded data.
+        Reviewed on 5/22/2020
+        '''
         self.output_fd = None
         if self.config.verbose:
             self.add_message(f'Opening output file {self.output_filename}')
@@ -183,17 +189,18 @@ class Process(object):
 
         # Check if server knows about RESTart and switch back to single connection
         # download if necessary.
+        if not self.conns[0].resuming_supported:
+            self.set_single_connection()
+
         if self.restore_state():
             self.output_fd = self.open_file(self.output_filename, os.O_WRONLY)
             if self.output_fd is None:
                 return False
         else:
-            if not self.conns[0].resuming_supported:
-                self.set_single_connection()
-            self.divide()
             self.output_fd = self.open_file(self.output_filename, os.O_CREAT | os.O_WRONLY)
             if self.output_fd is None:
                 return False
+            self.divide()
             if self.num_of_connections > 1:
                 self.check_seek_past_eof()
         return True
@@ -206,7 +213,7 @@ class Process(object):
         pass
 
     def start_downloading(self):
-        for conn in self.conns[1:]:
+        for conn in self.conns:
             conn.set_url(self.url)
             conn.resuming_supported = True
 
@@ -215,7 +222,9 @@ class Process(object):
 
         for i in range(self.num_of_connections):
             if self.conns[i].current_byte > self.conns[i].last_byte:
+                conn.lock.acquire()
                 self.reactivate_connection(i)
+                conn.lock.release()
             elif self.conns[i].current_byte < self.conns[i].last_byte:
                 if self.config.verbose:
                     self.add_message(
@@ -225,29 +234,13 @@ class Process(object):
                     )
                 self.conns[i].state = True
                 self.conns[i].setup_thread = threading.Thread(
-                    target=setup_connection_thread,
+                    target=self.setup_connection_thread,
                     args=(self.conns[i],)
                 )
 
         # The real downloading starts from here.
         self.start_time = time.time()
         self.ready = True
-
-    def __cancel_thread(self, thread_id):
-        if not isinstance(thread_id, ctypes.c_long):
-            thread_id = ctypes.c_long(thread_id)
-        res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
-            thread_id,
-            ctypes.py_object(SystemExit)
-        )
-        if res == 0:
-            raise ValueError('Invalid thread id')
-        if res > 1:
-            ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                thread_id,
-                None
-            )
-            sys.stderr.write('Exception raise within thread failed\n')
 
     @staticmethod
     def setup_connection_thread(conn):
@@ -265,6 +258,22 @@ class Process(object):
             conn.disconnect()
         conn.state = False
         conn.lock.release()
+
+    def __cancel_thread(self, thread_id):
+        if not isinstance(thread_id, ctypes.c_long):
+            thread_id = ctypes.c_long(thread_id)
+        res = ctypes.pythonapi.PyThreadState_SetAsyncExc(
+            thread_id,
+            ctypes.py_object(SystemExit)
+        )
+        if res == 0:
+            raise ValueError('Invalid thread id')
+        if res > 1:
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                thread_id,
+                None
+            )
+            sys.stderr.write('Exception raise within thread failed\n')
 
     def reactivate_connection(self, i):
         ''' 
@@ -302,6 +311,8 @@ class Process(object):
             return None
 
     def restore_state(self):
+        if not self.conns[0].resuming_supported:
+            return False
         state = self.load_state()
         if state:
             self.num_of_connections = int(state['num_of_connections'])
@@ -413,12 +424,6 @@ class Process(object):
     def close(self):
         pass
 
-    def load_state(self):
-        if os.path.exists(self.state_filename):
-            with open(self.state_filename, 'r') as file_obj:
-                return json.load(file_obj)
-        return None
-
     def save_state(self):
         # No use for .st file if the server doesn't support resuming.
         if not self.conns[0].resuming_supported:
@@ -438,3 +443,9 @@ class Process(object):
             )
         with open(self.state_filename, 'w') as file_obj:
             json.dump(state, file_obj)
+
+    def load_state(self):
+        if os.path.exists(self.state_filename):
+            with open(self.state_filename, 'r') as file_obj:
+                return json.load(file_obj)
+        return None

@@ -67,7 +67,7 @@ class Http(Connection):
             return False
         return True
 
-    def setup(self):
+    def request_setup(self):
         if not self.is_connected():
             raise Exception(f'Exception in {__name__}: connection needs to be estabilished first, call connection_init().')
         self.first_byte = -1
@@ -83,7 +83,7 @@ class Http(Connection):
         while True:
             self.resuming_supported = True
             self.current_byte = 0
-            if not self.setup() or not self.execute_req_resp():
+            if not self.request_setup() or not self.execute_req_resp():
                 return False
             self.disconnect()
             self.set_filename_from_response()

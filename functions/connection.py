@@ -46,7 +46,7 @@ class Connection(object):
         self.tcp = Tcp()
         
         self.lock = threading.Lock()
-
+        self.enabled = False
         self.init_url_params()
 
         # Store the file size derived from response message
@@ -56,7 +56,7 @@ class Connection(object):
         self.last_byte = 0
         self.last_transfer = None
 
-        # What is state
+        # What is state?
         self.state = False
 
         # Store the thread reference when multi-threading
@@ -107,7 +107,7 @@ class Connection(object):
         full_url = self.get_scheme_str(self.scheme)
         if self.user and self.user != 'anonymous':
             full_url = ''.join([full_url, self.user, ':', self.password, '@'])
-        full_url = ''.join([full_url, self.host, ':', self.port, self.filedir, self.filename ])
+        full_url = ''.join([full_url, self.host, ':', str(self.port), self.filedir, self.filename ])
         if with_cgi_params:
             full_url = ''.join([full_url, '?', self.cgi_params])
         return full_url
@@ -123,9 +123,9 @@ class Connection(object):
         cgi_params = parse_results.query
         if PYXEL_DEBUG:
             sys.stderr.write('--- URL Parsing ---\n')
-            sys.stderr.write(f'Url: {url}')
+            sys.stderr.write(f'Url: {url}\n')
             sys.stderr.write('Pasring results:\n')
-            sys.stderr.write(f'Scheme: {scheme}\n')
+            sys.stderr.write(f'Scheme: {Connection.get_scheme_str(scheme)[:-3]}\n')
             sys.stderr.write(f'Port: {port}\n')
             sys.stderr.write(f'User: {user}\n')
             sys.stderr.write(f'Password: {password}\n')

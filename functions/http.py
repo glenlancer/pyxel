@@ -122,7 +122,7 @@ class Http(Connection):
         try:
             self.tcp.send(self.request.encode('utf-8'))
         except RuntimeError as r:
-            sys.stderr.write(f'{r.message}\n')
+            sys.stderr.write(f'{r.args[-1]}\n')
             return False
         return True
 
@@ -134,7 +134,7 @@ class Http(Connection):
             try:
                 recv_char = self.tcp.recv(1).decode('utf-8')
             except RuntimeError as r:
-                sys.stderr.write(f'{r.message}\n')
+                sys.stderr.write(f'{r.args[-1]}\n')
                 return False
             if recv_char == '\r':
                 continue

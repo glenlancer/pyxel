@@ -8,6 +8,7 @@ import ssl
 import socket
 import struct
 import psutil
+import select
 
 class Tcp(object):
     def __init__(self):
@@ -38,33 +39,36 @@ class Tcp(object):
                     ai_sockettype,
                     ai_protocol
                 )
-                if is_secure:
-                    context = ssl.SSLContext()
-                    self.socket_fd = context.wrap_socket(
-                        self.socket_fd, server_hostname=ai_host
-                    )
-                self.socket_fd.setblocking(False)
-                self.socket_fd.settimeout(io_timeout)
+                #if is_secure:
+                #    context = ssl.SSLContext()
+                #    self.socket_fd = context.wrap_socket(
+                #        self.socket_fd, server_hostname=ai_host
+                #    )
                 # Does this mean the port number is dynamic allocated?
                 # Do we need to do this: if local_if is not None and t_ai_family == socket.AF_INET:
                 if local_if:
                     local_addr = self.get_if_ip(local_if, t_ai_family)
                     if local_addr:
                         self.socket_fd.bind((local_addr, 0))
+                self.socket_fd.setblocking(False)
+                self.socket_fd.settimeout(io_timeout)
                 self.socket_fd.setsockopt(socket.IPPROTO_TCP, socket.TCP_FASTOPEN, 1)
                 self.socket_fd.connect((ai_host, ai_port))
             except socket.error as e:
-                Tcp.print_error(host, port, e.message)
+                Tcp.print_error(host, port, e.args[-1])
                 self.socket_fd = None
-            if self.socket_fd is not None:
+            if self.socket_fd is None:
+                continue
+            _, writeable, _ = select.select([], [self.socket_fd], [], io_timeout)
+            if self.socket_fd in writeable:
                 break
         if self.socket_fd is None:
             return False
         # Same function as to use settimeout() ?
         # self.socket_fd.settimeout(io_timeout)
-        val = struct.pack('QQ', io_timeout, 0)
-        self.socket_fd.setsockopt(socket.SOL_SOCKET, socket.SO_RCVTIMEO, val)
-        self.socket_fd.setsockopt(socket.SOL_SOCKET, socket.SO_SNDTIMEO, val)
+        # val = struct.pack('QQ', io_timeout, 0)
+        # self.socket_fd.setsockopt(socket.SOL_SOCKET, socket.SO_RCVTIMEO, val)
+        # self.socket_fd.setsockopt(socket.SOL_SOCKET, socket.SO_SNDTIMEO, val)
         return True
 
     def close(self):

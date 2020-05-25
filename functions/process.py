@@ -22,7 +22,10 @@ class Process(object):
     MIN_CHUNK_WORTH = 100 * 1024
 
     # 1 sec == 1000000000 nsec
+    SMALLEST_DELAY_IN_SEC = 0.0001
     NSECs_IN_1_SEC = 1000000000
+    NSECs_Increment = 10000000
+    DELAY_ADJUST_PERCENT = 0.05
 
     def __init__(self, config):
         self.config = config
@@ -34,9 +37,17 @@ class Process(object):
         self.state_filename = None
         self.file_size = 0
         self.bytes_done = 0
-        
+        self.bytes_per_second = 0
+        self.start_byte = 0
+
+        self.start_time = None
+        self.finish_time = None
+
         self.delay_time_for_process = {
             'sec': 0, 'nsec': 0
+        }
+        self.delay_time_for_waiting_connection = {
+            'sec': 0, 'nsec': Process.NSECs_IN_1_SEC // 10
         }
         self.next_state = 0
         self.ready = False
@@ -50,8 +61,12 @@ class Process(object):
     def __del__(self):
         if self.messages:
             sys.stdout.write(f'Dump all stored messages for {__name__}\n')
-            for message in self.messages:
-                sys.stdout.write(''.join([message, '\n']))
+            self.process_print_messages()
+
+    def process_print_messages(self):
+        for message in self.messages:
+            sys.stdout.write(''.join([message, '\n']))
+        self.messages = []
 
     def prepare_connections(self, num_of_connections):
         for _ in range(num_of_connections):
@@ -80,7 +95,7 @@ class Process(object):
 
     def prepare_other_connections(self):
         assert len(self.conns) == 1
-        self.prepare_connections(self.num_of_connections - 1)
+        self.prepare_connections(self.config.num_of_connections - 1)
 
     def is_resuming_supported(self):
         return self.conns[0].resuming_supported
@@ -175,6 +190,7 @@ class Process(object):
                 self.add_message(f'File size: {self.file_size} bytes.')
             else:
                 self.add_message('File size: unavailable.')
+        return True
 
     # map axel_open()
     def open_local_files(self):
@@ -201,7 +217,7 @@ class Process(object):
             if self.output_fd is None:
                 return False
             self.divide()
-            if self.num_of_connections > 1:
+            if self.config.num_of_connections > 1:
                 self.check_seek_past_eof()
         return True
 
@@ -220,7 +236,7 @@ class Process(object):
         if self.config.verbose:
             print('Starting download...')
 
-        for i in range(self.num_of_connections):
+        for i in range(self.config.num_of_connections):
             if self.conns[i].current_byte > self.conns[i].last_byte:
                 conn.lock.acquire()
                 self.reactivate_connection(i)
@@ -237,6 +253,7 @@ class Process(object):
                     target=self.setup_connection_thread,
                     args=(self.conns[i],)
                 )
+                self.conns[i].setup_thread.start()
 
         # The real downloading starts from here.
         self.start_time = time.time()
@@ -248,9 +265,8 @@ class Process(object):
         Thread used to set up a connection
         Reviewed on 5/22/2020
         '''
-        # Do we need to enable thread to be cancalable in python or can we do it?
         conn.lock.acquire()
-        if conn.setup():
+        if conn.request_setup():
             conn.last_transfer = time.time()
             if conn.execute_req_resp():
                 conn.last_transfer = time.time()
@@ -318,13 +334,14 @@ class Process(object):
             return False
         state = self.load_state()
         if state:
-            self.num_of_connections = int(state['num_of_connections'])
+            self.config.num_of_connections = int(state['num_of_connections'])
             self.bytes_done = int(state['bytes_done'])
-            assert self.num_of_connections > 0
+            assert self.config.num_of_connections > 0
             self.prepare_other_connections()
-            for i in range(self.num_of_connections):
-                self.conns[i].current_byte = state['connections'][i].current_byte
-                self.conns[i].last_byte = state['connections'][i].last_byte
+            for i in range(self.config.num_of_connections):
+                print(state['connections'][i])
+                self.conns[i].current_byte = state['connections'][i]['current_byte']
+                self.conns[i].last_byte = state['connections'][i]['last_byte']
             self.add_message(
                 f'State file found: {self.bytes_done} bytes downloaded, {self.file_size - self.bytes_done} to go.'
             )
@@ -387,18 +404,6 @@ class Process(object):
             self.save_state()
             self.next_state = current_time + self.config.save_state_interval
 
-    def wait_for_data(self):
-        ''' Wait data on (one of) the connections '''
-        ready_connections = []
-        for conn in self.conns:
-            # Skip connection if setup thread hasn't released the lock yet.
-            # enabled is shared variable.
-            if not conn.lock.acquire(blocking=False):
-                if conn.enabled:
-                    ready_connections.append(conn)
-                conn.lock.release()
-        return ready_connections
-
     def connections_check(self):
         ''' Look for aborted connections and attempt to restart them. '''
         for i, conn in enumerate(self.conns):
@@ -423,16 +428,53 @@ class Process(object):
                     conn.setup_thread.join()
             conn.lock.release()
 
+    def calculate_average_speed_and_finish_time(self):
+        self.bytes_per_second = (self.bytes_done - self.start_byte) // (time.time() - self.start_time)
+        if self.bytes_per_second != 0:
+            self.finish_time = int(
+                self.start_time + (self.file_size - self.start_time) / self.bytes_per_second
+            )
+        else:
+            self.finish_time = None
+
+    def adjust_downloading_speed(self):
+        if self.config.max_speed <= 0:
+            return
+        max_speed_ratio = 1000 * self.bytes_per_second / self.config.max_speed
+        if max_speed_ratio > 1000 * self.DELAY_ADJUST_PERCENT:
+            self.delay_time_for_process["nsec"] += 0
+
+    def check_if_bytes_done(self):
+        if self.bytes_done == self.file_size:
+            self.ready = True
+
+    def downloading_maintance(self):
+        self.connections_check()
+        self.calculate_average_speed_and_finish_time()
+        self.adjust_downloading_speed()
+        self.check_if_bytes_done()
 
     def do_downloading(self):
-        delay_time_in_second = 0.1
-
         self.create_state_file_periodically()
 
         ready_connections = self.wait_for_data()
+
         if not ready_connections:
-            time.sleep(delay_time_in_second)
-            self.ready = False
+            Process.process_sleep(Process.delay_time_for_waiting_connection)
+            self.downloading_maintance()
+            return
+
+    def wait_for_data(self):
+        ''' Wait data on (one of) the connections '''
+        ready_connections = []
+        for conn in self.conns:
+            # Skip connection if setup thread hasn't released the lock yet.
+            # enabled is shared variable.
+            if not conn.lock.acquire(blocking=False):
+                if conn.enabled and conn.is_connected()
+                    ready_connections.append(conn)
+                conn.lock.release()
+        return ready_connections
 
     def terminate(self):
         ''' 
@@ -441,11 +483,11 @@ class Process(object):
         '''
         for conn in self.conns:
             if conn.setup_thread:
-                self.__cancel_thread(conn.setup_thread)
+                self.__cancel_thread(conn.setup_thread.ident)
                 conn.setup_thread.join()
             conn.disconnect()
 
-        if self.ready:
+        if self.ready and os.path.exists(self.state_filename):
             os.unlink(self.state_filename)
         elif self.bytes_done > 0:
             self.save_state()
@@ -477,3 +519,10 @@ class Process(object):
             with open(self.state_filename, 'r') as file_obj:
                 return json.load(file_obj)
         return None
+
+    @staticmethod
+    def process_sleep(delay):
+        delay_in_seconds = delay['sec'] + delay['nsec'] / Process.NSECs_IN_1_SEC
+        if delay_in_seconds <= Process.SMALLEST_DELAY_IN_SEC:
+            delay_in_seconds = Process.SMALLEST_DELAY_IN_SEC
+        time.sleep(delay_in_seconds)

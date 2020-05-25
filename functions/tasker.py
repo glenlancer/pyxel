@@ -24,14 +24,25 @@ class Tasker(object):
         if not self.process.new_preparation(self.url):
             return False
 
-        if not self.check_output_filename()
+        if not self.check_output_filename():
             return False
 
-        if not self.process.open_local_files()
+        if not self.process.open_local_files():
             return False
+
+        self.process.process_print_messages()
+
+        self.process.start_downloading()
+
+        self.process.process_print_messages()
 
         self.setup_signal_hook()
 
+        # While Loop here.
+
+        self.process.terminate()
+
+        return True
         # TBD.
 
     def check_output_filename(self):
@@ -84,7 +95,7 @@ class Tasker(object):
         return True
 
     def check_local_files(self):
-        ''' 
+        '''
         If no output filename specified in command, then check local
         files with output_filename generated in Process.
         '''
@@ -125,8 +136,8 @@ class Tasker(object):
         SIGKILL: this signal cannot be caught or ignored
         '''
         signal.signal(signal.SIGINT, self.stop)
-        signal.signal(singal.SIGTERM, self.stop)
-    
+        signal.signal(signal.SIGTERM, self.stop)
+
     def stop(self):
         '''
         Use this function to replace signals' default behaviors, by setting run as False
@@ -134,3 +145,16 @@ class Tasker(object):
         '''
         sys.stdout.write('SIGINT or SIGTERM signal recevied, stop running the progam.\n')
         self.run = False
+
+    @staticmethod
+    def time_human(total_seconds):
+        seconds = total_seconds % 60
+        minutes = total_seconds // 60 % 60
+        hours = total_seconds // 3600
+
+        if hours:
+            return '{}:{}:{} hour(s)'.format(hours, minutes, seconds)
+        elif minutes:
+            return '{}:{} minute(s)'.format(minutes, seconds)
+        else
+            return '{} second(s)'.format(seconds)

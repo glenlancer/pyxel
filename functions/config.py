@@ -3,11 +3,11 @@
 import re
 import socket
 
-PYXEL_DEBUG = True
+PYXEL_DEBUG = False
 
 def is_filename_valid(file_name):
     ''' check if given filename is valid '''
-    chars = '^[\-_\.a-zA-Z0-9]*$'
+    chars = '^[\-_\.a-zA-Z0-9\,\s]*$'
     return re.match(chars, file_name)
 
 class Config(object):

@@ -7,6 +7,7 @@ import threading
 import json
 import time
 import ctypes
+import select
 from urllib.parse import unquote
 
 # Read this..
@@ -23,8 +24,8 @@ class Process(object):
 
     # 1 sec == 1000000000 nsec
     SMALLEST_DELAY_IN_SEC = 0.0001
-    NSECs_IN_1_SEC = 1000000000
-    NSECs_Increment = 10000000
+    NSECs_IN_1_SEC = 10000 00000
+    NSECs_variation = 10000000
     DELAY_ADJUST_PERCENT = 0.05
 
     def __init__(self, config):
@@ -49,6 +50,8 @@ class Process(object):
         self.delay_time_for_waiting_connection = {
             'sec': 0, 'nsec': Process.NSECs_IN_1_SEC // 10
         }
+        self.delay_time_for_select = 0.1
+
         self.next_state = 0
         self.ready = False
 
@@ -404,6 +407,59 @@ class Process(object):
             self.save_state()
             self.next_state = current_time + self.config.save_state_interval
 
+    def downloading_maintance(self):
+        self.connections_check()
+        self.calculate_average_speed_and_finish_time()
+        self.adjust_downloading_speed()
+        self.check_if_bytes_done()
+
+    def do_downloading(self):
+        self.create_state_file_periodically()
+
+        ready_connections = self.wait_for_data()
+
+        if not ready_connections:
+            Process.process_sleep(Process.delay_time_for_waiting_connection)
+            self.downloading_maintance()
+            return
+
+        #inputs = list(map(lambda c : c.socket_fd(), ready_connections))
+        inputs = [c.get_socket_fd() for c in ready_connections]
+        readables, _, _ = select.select([inputs], [], [], self.delay_time_for_select)
+
+        for i, conn in enumerate(self.conns):
+            if not conn.lock.acquire(blocking=False):
+                continue
+            
+            if not conn.enabled:
+                conn.lock.release()
+                continue
+            
+            if conn.get_socket_fd() not in readables:
+                timeout = conn.last_transfer + self.config.connection_timeout
+                if time.time() > timeout:
+                    if self.config.verbose:
+                        self.add_message(f'Connection {i} timed out')
+                    conn.disconnect()
+                conn.lock.release()
+                continue
+            
+            conn.last_transfer = time.time()
+            
+
+
+    def wait_for_data(self):
+        ''' Wait data on (one of) the connections '''
+        ready_connections = []
+        for conn in self.conns:
+            # Skip connection if setup thread hasn't released the lock yet.
+            # enabled is shared variable.
+            if not conn.lock.acquire(blocking=False):
+                if conn.enabled and conn.is_connected()
+                    ready_connections.append(conn)
+                conn.lock.release()
+        return ready_connections
+
     def connections_check(self):
         ''' Look for aborted connections and attempt to restart them. '''
         for i, conn in enumerate(self.conns):
@@ -442,39 +498,21 @@ class Process(object):
             return
         max_speed_ratio = 1000 * self.bytes_per_second / self.config.max_speed
         if max_speed_ratio > 1000 * self.DELAY_ADJUST_PERCENT:
-            self.delay_time_for_process["nsec"] += 0
+            self.delay_time_for_process['nsec'] += Process.NSECs_variation
+        elif max_speed_ratio < 1000 * (1 - self.DELAY_ADJUST_PERCENT):
+            if self.delay_time_for_process['nsec'] >= Process.NSECs_variation:
+                self.delay_time_for_process['nsec'] -= Process.NSECs_variation
+            elif self.delay_time_for_process['sec'] > 0:
+                self.delay_time_for_process['sec'] -= 1
+                self.delay_time_for_process['nsec'] += Process.NSECs_IN_1_SEC - Process.NSECs_variation
+        else:
+            self.delay_time_for_process['sec'] = 0
+            self.delay_time_for_process['nsec'] = 0
+        self.process_sleep(self.delay_time_for_process)
 
     def check_if_bytes_done(self):
         if self.bytes_done == self.file_size:
             self.ready = True
-
-    def downloading_maintance(self):
-        self.connections_check()
-        self.calculate_average_speed_and_finish_time()
-        self.adjust_downloading_speed()
-        self.check_if_bytes_done()
-
-    def do_downloading(self):
-        self.create_state_file_periodically()
-
-        ready_connections = self.wait_for_data()
-
-        if not ready_connections:
-            Process.process_sleep(Process.delay_time_for_waiting_connection)
-            self.downloading_maintance()
-            return
-
-    def wait_for_data(self):
-        ''' Wait data on (one of) the connections '''
-        ready_connections = []
-        for conn in self.conns:
-            # Skip connection if setup thread hasn't released the lock yet.
-            # enabled is shared variable.
-            if not conn.lock.acquire(blocking=False):
-                if conn.enabled and conn.is_connected()
-                    ready_connections.append(conn)
-                conn.lock.release()
-        return ready_connections
 
     def terminate(self):
         ''' 

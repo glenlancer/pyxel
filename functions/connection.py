@@ -91,6 +91,9 @@ class Connection(object):
     def is_connected(self):
         return self.tcp.is_connected()
 
+    def get_socket_fd(self):
+        return self.tcp.socket_fd
+
     def is_secure_scheme(self):
         return (self.scheme == self.HTTPS) or (self.scheme == self.FTPS)
 

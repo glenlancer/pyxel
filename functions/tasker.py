@@ -39,6 +39,11 @@ class Tasker(object):
         self.setup_signal_hook()
 
         # While Loop here.
+        print('ready', self.process.ready)
+        print('run', self.run)
+        while not self.process.ready and self.run:
+            print('Total bytes, ', self.process.file_size, ' - Bytes done, ', self.process.bytes_done)
+            self.process.do_downloading()
 
         self.process.terminate()
 
@@ -156,5 +161,5 @@ class Tasker(object):
             return '{}:{}:{} hour(s)'.format(hours, minutes, seconds)
         elif minutes:
             return '{}:{} minute(s)'.format(minutes, seconds)
-        else
+        else:
             return '{} second(s)'.format(seconds)

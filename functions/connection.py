@@ -94,6 +94,13 @@ class Connection(object):
     def get_socket_fd(self):
         return self.tcp.socket_fd
 
+    def recv_data(self, msg_size):
+        try:
+            return self.tcp.recv(msg_size)
+        except Exception as e:
+            sys.stderr.write(f'{e.args[-1]}\n')
+            return None
+
     def is_secure_scheme(self):
         return (self.scheme == self.HTTPS) or (self.scheme == self.FTPS)
 
@@ -190,7 +197,7 @@ class Connection(object):
             split_result = rest_of_netloc.split(':')
             if len(split_result) > 1:
                 hostname = split_result[0]
-                port = split_result[1]
+                port = int(split_result[1])
             else:
                 hostname = split_result[0]
                 port = None

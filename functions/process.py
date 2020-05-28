@@ -24,7 +24,7 @@ class Process(object):
 
     # 1 sec == 1000000000 nsec
     SMALLEST_DELAY_IN_SEC = 0.0001
-    NSECs_IN_1_SEC = 10000 00000
+    NSECs_IN_1_SEC = 1000000000
     NSECs_variation = 10000000
     DELAY_ADJUST_PERCENT = 0.05
 
@@ -260,7 +260,7 @@ class Process(object):
 
         # The real downloading starts from here.
         self.start_time = time.time()
-        self.ready = True
+        self.ready = False
 
     @staticmethod
     def setup_connection_thread(conn):
@@ -269,15 +269,21 @@ class Process(object):
         Reviewed on 5/22/2020
         '''
         conn.lock.acquire()
+        print('lock JUST LOCKED!!!!!')
+        if not conn.is_connected():
+            conn.connection_init()
         if conn.request_setup():
             conn.last_transfer = time.time()
             if conn.execute_req_resp():
                 conn.last_transfer = time.time()
                 conn.enabled = True
+                print('Here1-----')
             else:
                 conn.disconnect()
+                print('Here2-----')
         else:
             conn.disconnect()
+            print('Here3-----')
         conn.state = False
         conn.lock.release()
 
@@ -289,7 +295,8 @@ class Process(object):
             ctypes.py_object(SystemExit)
         )
         if res == 0:
-            raise ValueError('Invalid thread id')
+            # raise ValueError('Invalid thread id')
+            return
         if res > 1:
             ctypes.pythonapi.PyThreadState_SetAsyncExc(
                 thread_id,
@@ -405,7 +412,7 @@ class Process(object):
         ''' Create state file periodically. '''
         if time.time() > self.next_state:
             self.save_state()
-            self.next_state = current_time + self.config.save_state_interval
+            self.next_state = time.time() + self.config.save_state_interval
 
     def downloading_maintance(self):
         self.connections_check()
@@ -419,13 +426,13 @@ class Process(object):
         ready_connections = self.wait_for_data()
 
         if not ready_connections:
-            Process.process_sleep(Process.delay_time_for_waiting_connection)
+            Process.process_sleep(self.delay_time_for_waiting_connection)
             self.downloading_maintance()
             return
 
         #inputs = list(map(lambda c : c.socket_fd(), ready_connections))
         inputs = [c.get_socket_fd() for c in ready_connections]
-        readables, _, _ = select.select([inputs], [], [], self.delay_time_for_select)
+        readables, _, _ = select.select(inputs, [], [], self.delay_time_for_select)
 
         for i, conn in enumerate(self.conns):
             if not conn.lock.acquire(blocking=False):
@@ -446,7 +453,57 @@ class Process(object):
             
             conn.last_transfer = time.time()
             
+            data_buffer = conn.recv_data(self.config.buffer_size)
 
+            if data_buffer is None:
+                if self.config.verbose:
+                    self.add_message(f'Error on connection {i}, connection closed')
+                conn.disconnect()
+                conn.lock.release()
+                continue
+            
+            if data_buffer == b'':
+                if conn.current_byte <= conn.last_byte and self.file_size != Connection.MAX_FILESIZE:
+                    self.add_message(f'Connection {i} unexpectedly closed')
+                else:
+                    self.add_message(f'Connection {i} finished')
+                if not conn.resuming_supported:
+                    self.ready = True
+                conn.disconnect()
+                self.reactivate_connection(i)
+                conn.lock.release()
+                continue
+            
+            remaining = conn.last_byte - conn.current_byte
+            data_buffer_size = len(data_buffer)
+            if remaining < data_buffer_size:
+                if self.config.verbose:
+                    self.add_message(f'Connection {i} finished')
+                conn.disconnect()
+                data_buffer_size = remaining
+
+            os.lseek(self.output_fd, conn.current_byte, os.SEEK_SET)
+            try:
+                os.write(self.output_fd, data_buffer[:data_buffer_size])
+            except Exception as e:
+                self.add_message(f'File write error! {e.args[-1]}')
+                self.ready = False
+                conn.lock.release()
+                return
+            
+            conn.current_byte += data_buffer_size
+            self.bytes_done += data_buffer_size
+
+            if data_buffer_size == remaining:
+                self.reactivate_connection(i)
+            
+            conn.lock.release()
+            continue
+
+        if self.ready:
+            return
+
+        self.downloading_maintance()
 
     def wait_for_data(self):
         ''' Wait data on (one of) the connections '''
@@ -455,7 +512,7 @@ class Process(object):
             # Skip connection if setup thread hasn't released the lock yet.
             # enabled is shared variable.
             if not conn.lock.acquire(blocking=False):
-                if conn.enabled and conn.is_connected()
+                if conn.enabled and conn.is_connected():
                     ready_connections.append(conn)
                 conn.lock.release()
         return ready_connections
@@ -463,7 +520,7 @@ class Process(object):
     def connections_check(self):
         ''' Look for aborted connections and attempt to restart them. '''
         for i, conn in enumerate(self.conns):
-            if not conn.lock.acquire(blocking=False):
+            if conn.last_transfer is None or not conn.lock.acquire(blocking=False):
                 continue
             if not conn.enabled and conn.current_byte < conn.last_byte:
                 if not conn.state:
@@ -479,7 +536,7 @@ class Process(object):
                         args=(conn,)
                     )
                 elif time.time() > conn.last_transfer + self.config.reconnect_delay:
-                    self.__cancel_thread(conn.setup_thread)
+                    self.__cancel_thread(conn.setup_thread.ident)
                     conn.state = False
                     conn.setup_thread.join()
             conn.lock.release()
@@ -511,7 +568,7 @@ class Process(object):
         self.process_sleep(self.delay_time_for_process)
 
     def check_if_bytes_done(self):
-        if self.bytes_done == self.file_size:
+        if self.bytes_done >= self.file_size:
             self.ready = True
 
     def terminate(self):

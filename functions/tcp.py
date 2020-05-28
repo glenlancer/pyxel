@@ -84,7 +84,8 @@ class Tcp(object):
         while bytes_recvd < msg_size:
             chunk = self.socket_fd.recv(min(msg_size - bytes_recvd, 2048))
             if chunk == b'':
-                raise RuntimeError('Socket connection broken while receiving.')
+                # the server has closed the connection
+                break
             chunks.append(chunk)
             bytes_recvd += len(chunk)
         return b''.join(chunks)

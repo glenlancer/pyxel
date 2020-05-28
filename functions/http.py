@@ -133,8 +133,8 @@ class Http(Connection):
         while True:
             try:
                 recv_char = self.tcp.recv(1).decode('utf-8')
-            except RuntimeError as r:
-                sys.stderr.write(f'{r.args[-1]}\n')
+            except Exception as e:
+                sys.stderr.write(f'{e.args[-1]}\n')
                 return False
             if recv_char == '\r':
                 continue
@@ -185,10 +185,10 @@ class Http(Connection):
                 self.add_header(f'Host: %s:%d' % (self.host, self.port))
         else:
             proto_str = self.get_scheme_str(self.scheme)
-            if self.is_default_port(self.port):
+            if self.is_default_port(self.scheme, self.port):
                 get_str = ''.join([proto_str, self.host, self.filedir, self.filename])
             else:
-                get_str = ''.joing([proto_str, self.host, self.filedir, self.filename])
+                get_str = ''.join([proto_str, self.host, self.filedir, self.filename])
             self.add_header('GET %s HTTP/1.0' % (get_str))
 
     def http_additional_headers(self):

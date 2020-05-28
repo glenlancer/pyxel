@@ -43,8 +43,10 @@ class Tasker(object):
         print('run', self.run)
         while not self.process.ready and self.run:
             print('Total bytes, ', self.process.file_size, ' - Bytes done, ', self.process.bytes_done)
-            self.process.do_downloading()
-
+            try:
+                self.process.do_downloading()
+            except Exception as e:
+                print(f'----> Exception {e.args[-1]}')
         self.process.terminate()
 
         return True
@@ -143,12 +145,12 @@ class Tasker(object):
         signal.signal(signal.SIGINT, self.stop)
         signal.signal(signal.SIGTERM, self.stop)
 
-    def stop(self):
+    def stop(self, signum, frame):
         '''
         Use this function to replace signals' default behaviors, by setting run as False
         will tell the program to terminate after everthing necessary thing is settled.
         '''
-        sys.stdout.write('SIGINT or SIGTERM signal recevied, stop running the progam.\n')
+        sys.stdout.write(f'{signum} signal recevied, stop running the progam.\n')
         self.run = False
 
     @staticmethod

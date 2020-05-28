@@ -31,6 +31,7 @@ class Tcp(object):
             Tcp.print_error(host, port, e.message)
             return False
         for gai_result in gai_results:
+            print('gai_result--->', gai_result)
             t_ai_family, ai_sockettype, ai_protocol, _, (ai_host, ai_port) = gai_result
             try:
                 self.close()
@@ -51,7 +52,7 @@ class Tcp(object):
                     if local_addr:
                         self.socket_fd.bind((local_addr, 0))
                 self.socket_fd.setblocking(False)
-                self.socket_fd.settimeout(io_timeout)
+                self.socket_fd.settimeout(5)
                 self.socket_fd.setsockopt(socket.IPPROTO_TCP, socket.TCP_FASTOPEN, 1)
                 self.socket_fd.connect((ai_host, ai_port))
             except socket.error as e:
@@ -66,9 +67,9 @@ class Tcp(object):
             return False
         # Same function as to use settimeout() ?
         # self.socket_fd.settimeout(io_timeout)
-        # val = struct.pack('QQ', io_timeout, 0)
-        # self.socket_fd.setsockopt(socket.SOL_SOCKET, socket.SO_RCVTIMEO, val)
-        # self.socket_fd.setsockopt(socket.SOL_SOCKET, socket.SO_SNDTIMEO, val)
+        #val = struct.pack('QQ', 0.1, 0)
+        #self.socket_fd.setsockopt(socket.SOL_SOCKET, socket.SO_RCVTIMEO, val)
+        #self.socket_fd.setsockopt(socket.SOL_SOCKET, socket.SO_SNDTIMEO, val)
         return True
 
     def close(self):

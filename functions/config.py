@@ -15,7 +15,8 @@ class Config(object):
     __MAX_REDIRECT = 20
     # Time out for select(), in seconds
     __DEFAULT_IO_TIMEOUT = 120
-    __DEFAULT_USER_AGENT = 'Mozilla/5.0 3578.98 Safari/537.36'
+    # __DEFAULT_USER_AGENT = 'Mozilla/5.0 3578.98 Safari/537.36'
+    __DEFAULT_USER_AGENT = 'Pyxel Linux (1.0)'
     AF_UNSPEC = socket.AF_UNSPEC
 
     def __init__(self):

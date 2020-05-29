@@ -28,36 +28,38 @@ class Connection(object):
 
     MAX_FILESIZE = sys.maxsize
 
-    def __init__(self, ai_family, io_timeout, max_redirect, local_ifs=None):
+    def __init__(self, ai_family, io_timeout, max_redirect, local_ifs=[]):
         self.ai_family = ai_family
         self.io_timeout = io_timeout
         self.max_redirect = max_redirect
 
-        # Local interface is currently a string, might improve to a list
+        # A list of local interface names
         self.local_ifs = local_ifs
         # Store the generated request message as a string
         self.request = None
+        # Http status code
         self.status_code = None
-
         # Store the file name derived from response message
         self.output_filename = None
-
         # The tcp tunnel used by application layer
         self.tcp = Tcp()
-        
-        self.lock = threading.Lock()
-        self.enabled = False
+
+        # Define and initialize all parts that constitute an URL 
         self.init_url_params()
 
         # Store the file size derived from response message
         self.file_size = None
-        self.first_byte = 0
-        self.current_byte = 0
-        self.last_byte = 0
+        self.first_byte = None
+        self.current_byte = None
+        self.last_byte = None
         self.last_transfer = None
+        self.lock = threading.Lock()
 
-        # What is state?
-        self.state = False
+        # When a connection is enabled, it means all data read from socket shall be written
+        # into the file
+        self.enabled = False
+        # When a connection thread is about to run till it finishes its job, in_progress is True
+        self.in_progress = False
 
         # Store the thread reference when multi-threading
         self.setup_thread = None
@@ -95,11 +97,15 @@ class Connection(object):
         return self.tcp.socket_fd
 
     def recv_data(self, msg_size):
+        '''
+        Receive binary data from Tcp connection
+        In Http, it's the binary data attached after Http response header
+        '''
         try:
             return self.tcp.recv(msg_size)
         except Exception as e:
-            sys.stderr.write(f'{e.args[-1]}\n')
-            return None
+            sys.stderr.write(f'Exception in {__name__}: {e.args[-1]}\n')
+            return b''
 
     def is_secure_scheme(self):
         return (self.scheme == self.HTTPS) or (self.scheme == self.FTPS)
@@ -204,15 +210,17 @@ class Connection(object):
         return hostname, port
 
     @staticmethod
-    def get_scheme_str(protocol):
-        if protocol == Connection.FTP:
+    def get_scheme_str(scheme):
+        if scheme == Connection.FTP:
             return 'ftp://'
-        elif protocol == Connection.FTPS:
+        elif scheme == Connection.FTPS:
             return 'ftps://'
-        elif protocol == Connection.HTTP:
+        elif scheme == Connection.HTTP:
             return 'http://'
-        elif protocol == Connection.HTTPS:
+        elif scheme == Connection.HTTPS:
             return 'https://'
+        else:
+            raise Exception(f'Exception in {__name__}: unsupported scheme as {scheme}')
 
     @staticmethod
     def get_scheme_from_url(url):
@@ -225,4 +233,4 @@ class Connection(object):
         elif url.lower().startswith('ftp://'):
             return Connection.FTP
         else:
-            raise Exception(f'Exception in {__name__}: unsupported scheme from {url}.')
+            raise Exception(f'Exception in {__name__}: unsupported scheme from {url}')

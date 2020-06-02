@@ -221,7 +221,6 @@ class Http(Connection):
         return True
 
     def set_filename_from_response(self):
-        filename = None
         if not 'Content-Disposition' in self.response_headers:
             return
         # This regex needs to be improved.
@@ -236,23 +235,40 @@ class Http(Connection):
             self.output_filename = filename
 
     def get_size_from_length(self):
-        if not 'Content-Length' in self.response_headers:
+        if 'Content-Length' in self.response_headers:
+            content_length = 'Content-Length'
+        elif 'content-length' in self.response_headers:
+            content_length = 'content-length'
+        else:
             return -1
-        return int(self.response_headers['Content-Length'])
+        return int(self.response_headers[content_length])
 
     def get_size_from_range(self):
-        if not 'Content-Range' in self.response_headers:
+        if 'Content-Range' in self.response_headers:
+            content_range = 'Content-Range'
+        elif 'content-range' in self.response_headers:
+            content_range = 'content-range'
+        else:
             return None
-        filesize = re.compile(
-            '^.*/(.*)$'
-        ).findall(self.response_headers['Content-Range'])[0]
+        filesize = re.compile('^.*/([0-9]*)$').findall(self.response_headers[content_range])[0]
         return int(filesize)
 
     def get_redirect_url_from_response(self):
+        '''
+        For example,
+        If current URL is: http://host1:port1/path/file001.txt
+        Then, Location header could be:
+        1) file002.txt -> http://host1:port1/path/file002.txt
+        2) /file002.txt -> http://host1:port1/file002.txt
+        3) //host2:port2/path2/file002.txt -> http://host2:port2/path2/file002.txt
+        4) https://*** -> https://***
+        '''
         redirect_url = self.get_location_from_response()
         if redirect_url is None:
             return None
-        elif redirect_url[0] == '/':
+        elif redirect_url.startswith('//'):
+            return ''.join([self.get_scheme_str(self.scheme), redirect_url])
+        elif redirect_url.startswith('/'):
             return '%s%s:%i%s' % \
                 (
                     self.get_scheme_str(self.scheme),
@@ -261,10 +277,14 @@ class Http(Connection):
                     redirect_url
                 )
         elif redirect_url.find('://') < 0:
-            return ''.join([self.generate_url(), redirect_url])
-        return redirect_url
+            return self.generate_url(redirect_url)
+        else:
+            return redirect_url
 
     def get_location_from_response(self):
-        if not 'location' in self.response_headers:
+        if 'location' in self.response_headers:
+            return self.response_headers['location']
+        elif 'Location' in self.response_headers['Location']
+            return self.response_headers['Location']
+        else:
             return None
-        return self.response_headers['location']

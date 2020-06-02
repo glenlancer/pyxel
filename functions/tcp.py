@@ -78,8 +78,6 @@ class Tcp(object):
             self.socket_fd = None
 
     def recv(self, msg_size):
-        if self.socket_fd is None:
-            raise Exception(f'Exception in {__name__}: socket_fd is None.')
         chunks = []
         bytes_recvd = 0
         while bytes_recvd < msg_size:
@@ -92,8 +90,6 @@ class Tcp(object):
         return b''.join(chunks)
 
     def send(self, data):
-        if self.socket_fd is None:
-            raise Exception(f'Exception in {__name__}: socket_fd is None.')
         if not isinstance(data, bytes):
             raise Exception(f'Exception in {__name__}: incorrect data type for {data}')
         totalsent = 0

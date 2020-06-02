@@ -80,10 +80,10 @@ class Connection(object):
         '''
         self.url = None
         self.scheme = None
+        self.host = None
         self.port = None
         self.user = None
         self.password = None
-        self.host = None
         self.filedir = None
         self.filename = None
         self.cgi_params = None
@@ -113,11 +113,15 @@ class Connection(object):
         self.host, self.filedir, self.filename, self.cgi_params \
             = self.analyse_url(url)
 
-    def generate_url(self, with_cgi_params=False):
+    def generate_url(self, new_filename=None, with_cgi_params=False):
         full_url = self.get_scheme_str(self.scheme)
         if self.user and self.user != 'anonymous':
             full_url = ''.join([full_url, self.user, ':', self.password, '@'])
-        full_url = ''.join([full_url, self.host, ':', str(self.port), self.filedir, self.filename ])
+        if new_filename:
+            filename = new_filename
+        else:
+            filename = self.filename
+        full_url = ''.join([full_url, self.host, ':', str(self.port), self.filedir, filename])
         if with_cgi_params:
             full_url = ''.join([full_url, '?', self.cgi_params])
         return full_url

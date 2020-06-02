@@ -8,6 +8,7 @@ This implementation aims to be run on Linux only.
 
 axel_new -> axel_open -> axel_start -> axel_do ->  axel_close
 
+<<<<<<< HEAD
 ### Redirections in HTTP
 
 URL redirections, also known as URL forwarding, is a technique to give more than one URL address to a page, a form, or a whole Web site/application. HTTP has a special kind of response, called a _HTTP redirect_, for this opersion.
@@ -42,3 +43,14 @@ To apply a redirect to a directory or only certain pages, use the `rewrite` dire
 rewrite ^/images/(.*)$ https://images.example.com/$1 redirect;
 rewrite ^/images/(.*)$ https://images.example.com/$1 permanent;
 ```
+=======
+### RoadMap to finish the basic of this program
+
+1. http.py, tcp.py, connection.py
+2. process.py
+3. tasker.py
+4. ftp.py
+5. config.py
+
+### Protocols
+>>>>>>> 237ce676f144483694988e44900165ce84c2d445

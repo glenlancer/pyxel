@@ -52,7 +52,7 @@ class Process(object):
         }
         self.delay_time_for_select = 0.1
 
-        self.next_state = 0
+        self.next_time_to_save_state = 0
         self.ready = False
 
         # Store the connection objects, each works on a portion of the data to be downloaded
@@ -251,7 +251,7 @@ class Process(object):
                         f'{self.conns[i].host}:{self.conns[i].port} '
                         f'using interface {self.conns[i].local_ifs}'
                     )
-                self.conns[i].state = True
+                self.conns[i].in_progress = True
                 self.conns[i].setup_thread = threading.Thread(
                     target=self.setup_connection_thread,
                     args=(self.conns[i],)
@@ -280,7 +280,7 @@ class Process(object):
                 conn.disconnect()
         else:
             conn.disconnect()
-        conn.state = False
+        conn.in_progress = False
         conn.lock.release()
 
     def __cancel_thread(self, thread_id):
@@ -405,9 +405,9 @@ class Process(object):
 
     def create_state_file_periodically(self):
         ''' Create state file periodically. '''
-        if time.time() > self.next_state:
+        if time.time() > self.next_time_to_save_state:
             self.save_state()
-            self.next_state = time.time() + self.config.save_state_interval
+            self.next_time_to_save_state = time.time() + self.config.save_state_interval
 
     def downloading_maintance(self):
         self.connections_check()
@@ -520,14 +520,14 @@ class Process(object):
             if conn.last_transfer is None or not conn.lock.acquire(blocking=False):
                 continue
             if not conn.enabled and conn.current_byte < conn.last_byte:
-                if not conn.state:
+                if not conn.in_progress:
                     # Wait for termination of this thread
                     conn.setup_thread.join()
 
                     if self.config.verbose:
                         self.add_message('Connection {0} downloading from {1}:{2} using interface {3}'
                             .format(i, conn.host, conn.port, conn.local_ifs))
-                    conn.state = True
+                    conn.in_progress = True
                     conn.setup_thread = threading.Thread(
                         target=self.setup_connection_thread,
                         args=(conn,)
@@ -535,7 +535,7 @@ class Process(object):
                     conn.setup_thread.start()
                 elif time.time() > conn.last_transfer + self.config.reconnect_delay:
                     self.__cancel_thread(conn.setup_thread.ident)
-                    conn.state = False
+                    conn.in_progress = False
                     conn.setup_thread.join()
             conn.lock.release()
 

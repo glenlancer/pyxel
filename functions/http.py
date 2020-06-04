@@ -4,9 +4,11 @@
 import sys
 import base64
 import re
+
 from .connection import Connection
 
 from .config import PYXEL_DEBUG
+from .config import is_filename_valid
 
 class Http(Connection):
     def __init__(
@@ -118,11 +120,13 @@ class Http(Connection):
             sys.stdout.write('--- Sending request ---\n')
             sys.stdout.write(self.request)
             sys.stdout.write('--- End of request ---\n')
+        # Adding an empty line to indicate the end of the header fields.
+        # Message-body is optional.
         self.request = ''.join([self.request, '\r\n'])
         try:
             self.tcp.send(self.request.encode('utf-8'))
-        except RuntimeError as r:
-            sys.stderr.write(f'{r.args[-1]}\n')
+        except Exception as e:
+            sys.stderr.write(f'{e.args[-1]}\n')
             return False
         return True
 
@@ -164,52 +168,54 @@ class Http(Connection):
 
     def build_basic_get(self):
         self.request = ''
-        self.add_request_head()
+        self.add_request_line()
         if self.http_basic_auth:
-            self.add_header(f'Authorization: Basic %s' % (self.http_basic_auth))
+            self.add_header(f'Authorization: Basic {self.http_basic_auth}')
         self.add_header('Accept: */*')
         self.add_range_header()
 
     def add_range_header(self):
-        if self.first_byte >= 0 and self.last_byte:
-            self.add_header('Range: bytes=%d-%d' % (self.first_byte, self.last_byte))
+        if self.first_byte < 0 or self.last_byte < 0:
+            raise Exception(f'first_byte and last_byte must be >= 0, actual value is {self.first_byte}-{self.last_byte}')
+        if self.last_byte > 0:
+            self.add_header('Range: bytes={}-{}'.format(self.first_byte, self.last_byte))
         else:
-            self.add_header('Range: bytes=%d-' % (self.first_byte))
+            self.add_header('Range: bytes={}-'.format(self.first_byte))
 
-    def add_request_head(self):
-        if self.http_proxy is None:
-            self.add_header(f'GET %s%s HTTP/1.0' % (self.filedir, self.filename))
-            if self.is_default_port(self.scheme, self.port):
-                self.add_header(f'Host: %s' % (self.host))
-            else:
-                self.add_header(f'Host: %s:%d' % (self.host, self.port))
-        else:
+    def add_request_line(self):
+        '''
+        The Request-Line begins with a method token, followed by the Request-URI and the
+        protocol version, and ending with CRLF. The elements are separated by space SP
+        characters.
+        Request-Line = Method SP Request-URI SP HTTP-Version CRLF.
+        '''
+        if self.http_proxy:
             proto_str = self.get_scheme_str(self.scheme)
-            if self.is_default_port(self.scheme, self.port):
+            if Http.is_default_port(self.scheme, self.port):
                 get_str = ''.join([proto_str, self.host, self.filedir, self.filename])
             else:
-                get_str = ''.join([proto_str, self.host, self.filedir, self.filename])
-            self.add_header('GET %s HTTP/1.0' % (get_str))
+                get_str = ''.join([proto_str, self.host, ':', self.port, self.filedir, self.filename])
+            self.add_header(f'GET {get_str} HTTP/1.0')
+        else:
+            self.add_header(f'GET {self.filedir}{self.filename} HTTP/1.0')
+            if Http.is_default_port(self.scheme, self.port):
+                self.add_header(f'Host: {self.host}')
+            else:
+                self.add_header(f'Host: {self.host}:{self.port}')
 
     def http_additional_headers(self):
         for key, value in self.request_headers.items():
             self.add_header(f'{key}: {value}')
 
     def add_header(self, header):
+        '''
+        A header field followed by a CRLF.
+        '''
         self.request = ''.join([self.request, header, '\r\n'])
-
-    def is_default_port(self, scheme, port):
-        if scheme == self.HTTP:
-            return port == self.HTTP_DEFAULT_PORT
-        elif scheme == self.HTTPS:
-            return port == self.HTTPS_DEFAULT_PORT
-        else:
-            raise Exception(f'Exception in {__name__}: Unknown scheme for Http.')
 
     def set_filesize(self):
         self.file_size = self.get_size_from_range()
-        # We assume partial requests are supported if a Content-Range
-        # header is present.
+        # We assume partial requests are supported if a Content-Range header is present.
         self.resuming_supported = (self.status_code == 206) or (self.file_size > 0)
         if self.file_size <= 0:
             if self.status_code not in (200, 206, 416):
@@ -221,16 +227,25 @@ class Http(Connection):
         return True
 
     def set_filename_from_response(self):
+        '''
+        Example: Content-Disposition: attachment; filename="filename.jpg"
+        '''
         if not 'Content-Disposition' in self.response_headers:
+            content_disposition = 'Content-Disposition'
+        elif not 'content-disposition' in self.response_headers:
+            content_disposition = 'content-disposition'
+        else:
             return
-        # This regex needs to be improved.
+
         filename = re.compile(
             '^.*filename=[\'\"](.*)[\'\"]$'
-        ).findall(self.response_headers['Content-Disposition'])[0]
+        ).findall(self.response_headers[content_disposition])[0]
         # Replace common invalid characters in filename
-	    # https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
+        # https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words
         for char in '/\\?%*:|<>':
             filename = filename.replace('_', char)
+            if not is_filename_valid(filename):
+                raise Exception(f'The filename is still not valid. {filename}')
         if filename:
             self.output_filename = filename
 
@@ -249,7 +264,7 @@ class Http(Connection):
         elif 'content-range' in self.response_headers:
             content_range = 'content-range'
         else:
-            return None
+            return -1
         filesize = re.compile('^.*/([0-9]*)$').findall(self.response_headers[content_range])[0]
         return int(filesize)
 

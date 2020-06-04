@@ -133,6 +133,19 @@ class Connection(object):
         return full_url
 
     @staticmethod
+    def is_default_port(scheme, port):
+        if scheme == Connection.HTTP:
+            return port == Connection.HTTP_DEFAULT_PORT
+        elif scheme == Connection.HTTPS:
+            return port == Connection.HTTPS_DEFAULT_PORT
+        elif scheme == Connection.FTP:
+            return port == Connection.FTP_DEFAULT_PORT
+        elif scheme == Connection.FTPS:
+            return port == Connection.FTPS_DEFAULT_PORT
+        else:
+            raise Exception(f'Exception in {__name__}: Unknown scheme for Http or Ftp.')
+
+    @staticmethod
     def analyse_url(url):
         parse_results = urlparse(url)
         scheme, port = Connection.parse_scheme(parse_results.scheme)

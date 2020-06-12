@@ -62,16 +62,14 @@ class Http(Connection):
         self.tcp.close()
 
     def connection_init(self):
-        if self.url is None:
-            raise Exception(f'Exception in {__name__}: set_url() needs to be called first.')
+        assert self.url is not None, 'set_url() needs to be called first.'
         if not self.connect():
             self.disconnect()
             return False
         return True
 
     def request_setup(self):
-        if not self.is_connected():
-            raise Exception(f'Exception in {__name__}: connection needs to be estabilished first, call connection_init().')
+        assert self.is_connected(), 'connection needs to be estabilished first, call connection_init().'
         self.first_byte = -1
         if self.resuming_supported:
             self.first_byte = self.current_byte
@@ -299,7 +297,7 @@ class Http(Connection):
     def get_location_from_response(self):
         if 'location' in self.response_headers:
             return self.response_headers['location']
-        elif 'Location' in self.response_headers['Location']
+        elif 'Location' in self.response_headers['Location']:
             return self.response_headers['Location']
         else:
             return None

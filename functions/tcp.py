@@ -90,8 +90,7 @@ class Tcp(object):
         return b''.join(chunks)
 
     def send(self, data):
-        if not isinstance(data, bytes):
-            raise Exception(f'Exception in {__name__}: incorrect data type for {data}')
+        assert isinstance(data, bytes), f'incorrect data type as _{type(data)}_'
         totalsent = 0
         msglen = len(data)
         while totalsent < msglen:
